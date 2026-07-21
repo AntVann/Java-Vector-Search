@@ -20,7 +20,7 @@ public final class VectorForgeDemo {
         DemoConfig config = DemoConfig.parse(args);
 
         if (!"cpu".equals(config.backend())) {
-            System.err.println("Backend '" + config.backend() + "' is unavailable in Milestone 1. Supported backend: cpu");
+            System.err.println("Backend '" + config.backend() + "' is not available yet. Supported backend: cpu");
             System.exit(2);
         }
 

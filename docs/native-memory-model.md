@@ -2,7 +2,7 @@
 
 ## Status
 
-Milestone 1 is CPU-only and keeps index state entirely on the Java heap. This document captures the intended ownership model for future native and GPU work so the project can evolve without ambiguity.
+The current implementation is CPU-only and keeps index state entirely on the Java heap. This document captures the intended ownership model for future native and GPU work so the project can evolve without ambiguity.
 
 ## Planned Ownership Rules
 
@@ -48,4 +48,3 @@ Every JNI entrypoint should follow the same rule:
 2. Use RAII on the C++ side for intermediate resources
 3. Transfer ownership only after full construction succeeds
 4. Leave Java-visible handles in a consistent state on all failure paths
-

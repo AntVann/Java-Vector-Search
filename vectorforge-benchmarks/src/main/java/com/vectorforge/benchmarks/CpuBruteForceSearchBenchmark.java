@@ -33,6 +33,7 @@ public class CpuBruteForceSearchBenchmark {
 
     private CpuBruteForceIndex index;
     private float[] query;
+    private SearchParameters parameters;
 
     @Setup(Level.Trial)
     public void setUp() {
@@ -54,6 +55,7 @@ public class CpuBruteForceSearchBenchmark {
 
         index = new CpuBruteForceIndex();
         index.build(vectors, ids);
+        parameters = new SearchParameters(DistanceMetric.EUCLIDEAN);
     }
 
     @TearDown(Level.Trial)
@@ -65,7 +67,6 @@ public class CpuBruteForceSearchBenchmark {
 
     @Benchmark
     public Object searchTopK() {
-        return index.search(query, k, new SearchParameters(DistanceMetric.EUCLIDEAN));
+        return index.search(query, k, parameters);
     }
 }
-

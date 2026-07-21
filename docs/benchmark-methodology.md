@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the benchmark rules the repository will follow. Milestone 1 provides only a CPU benchmark scaffold and does not claim any measured results.
+This document defines the benchmark rules the repository will follow. The current implementation provides only a CPU benchmark scaffold and does not claim any measured results.
 
 ## JVM Warm-Up
 
@@ -52,4 +52,3 @@ Kernel execution alone hides real deployment costs:
 - JVM/native boundary costs
 
 For that reason, VectorForge will always report both component timings and total observed query time.
-

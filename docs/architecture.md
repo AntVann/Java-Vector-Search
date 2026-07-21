@@ -2,7 +2,7 @@
 
 ## Scope
 
-Milestone 1 establishes the API and CPU baseline while reserving clear extension points for native and GPU work.
+This repository establishes the API and CPU baseline while reserving clear extension points for native and GPU work.
 
 ## Java API Layer
 
@@ -27,7 +27,7 @@ The API intentionally keeps search inputs small and explicit so JNI and future o
 
 ## JNI Boundary
 
-`vectorforge-native` is a placeholder in Milestone 1. The planned model is:
+`vectorforge-native` is currently a placeholder. The planned model is:
 
 - Java owns backend selection and public lifecycle
 - Native code owns opaque handles and device resources
@@ -36,7 +36,7 @@ The API intentionally keeps search inputs small and explicit so JNI and future o
 
 ## Native Resource Ownership
 
-Milestone 1 keeps all data on the Java heap. The future native ownership model is documented in [native-memory-model.md](/C:/Users/Anthony/Desktop/Java%20Vector%20Search/vectorforge/docs/native-memory-model.md).
+The current CPU baseline keeps all data on the Java heap. The future native ownership model is documented in [native-memory-model.md](native-memory-model.md).
 
 ## CUDA Backend
 
@@ -77,5 +77,4 @@ Planned native behavior:
 - Synchronized `build()` and `close()`
 - Lock-free concurrent `search()` calls after build through immutable published state
 
-Concurrent close versus in-flight search is not serialized in Milestone 1. A search that already captured a published index snapshot may finish successfully while a concurrent close occurs.
-
+Concurrent close versus in-flight search is not serialized. A search that already captured a published index snapshot may finish successfully while a concurrent close occurs.

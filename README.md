@@ -1,6 +1,6 @@
 # VectorForge
 
-VectorForge is a Java-first vector search project built to compare exact nearest-neighbor search across a pure JVM baseline, a custom CUDA path, and an NVIDIA cuVS-backed implementation. This repository currently completes Milestone 1: a CPU-only baseline with a backend-independent API, deterministic correctness behavior, unit tests, a demo CLI, and a benchmark module scaffold.
+VectorForge is a Java-first vector search project built to compare exact nearest-neighbor search across a pure JVM baseline, a custom CUDA path, and an NVIDIA cuVS-backed implementation. The repository currently provides a CPU-only baseline with a backend-independent API, deterministic correctness behavior, unit tests, a demo CLI, and a benchmark module scaffold.
 
 ## Motivation
 
@@ -27,8 +27,8 @@ flowchart LR
 ## Supported Backends
 
 - `cpu`: implemented and tested
-- `cuda`: planned, unavailable in Milestone 1
-- `cuvs`: planned, unavailable in Milestone 1
+- `cuda`: planned, not yet implemented
+- `cuvs`: planned, not yet implemented
 
 ## Repository Layout
 
@@ -57,25 +57,25 @@ vectorforge/
 ## CPU-Only Setup
 
 ```powershell
-cd vectorforge
+# from the repository root
 ./scripts/build-cpu.ps1
 ```
 
 ## CUDA Setup
 
-Milestone 1 does not compile or link CUDA yet. The `cuda` profile exists so future work can layer in native compilation without changing the top-level build contract.
+CUDA compilation and linking are not implemented yet. The `cuda` profile exists so future work can layer in native compilation without changing the top-level build contract.
 
 ```powershell
-cd vectorforge
+# from the repository root
 ./scripts/build-cuda.ps1
 ```
 
 ## cuVS Setup
 
-Milestone 1 does not integrate cuVS yet. The `cuvs` profile is reserved for future native discovery and adapter wiring.
+cuVS integration is not implemented yet. The `cuvs` profile is reserved for future native discovery and adapter wiring.
 
 ```powershell
-cd vectorforge
+# from the repository root
 ./scripts/build-cuvs.ps1
 ```
 
@@ -109,14 +109,14 @@ Or use the helper script:
 
 ## Benchmark Methodology
 
-The detailed benchmark plan lives in [docs/benchmark-methodology.md](/C:/Users/Anthony/Desktop/Java%20Vector%20Search/vectorforge/docs/benchmark-methodology.md). Milestone 1 includes a JMH module scaffold and a CPU search benchmark class, but no published performance claims.
+The detailed benchmark plan lives in [docs/benchmark-methodology.md](docs/benchmark-methodology.md). The repository includes a JMH module scaffold and a CPU search benchmark class, but no published performance claims.
 
 ## Current Limitations
 
 - Only the CPU brute-force backend is implemented
 - The API supports single-query search; batched search is currently an implementation-specific extension on the CPU backend
 - Native, CUDA, and cuVS modules are placeholders to preserve the multi-module build shape
-- Benchmark result export and Markdown conversion are deferred to the benchmark milestone
+- Benchmark result export and Markdown conversion are deferred until benchmark reporting is implemented
 
 ## Roadmap
 
@@ -125,4 +125,3 @@ The detailed benchmark plan lives in [docs/benchmark-methodology.md](/C:/Users/A
 3. Integrate cuVS behind a narrow native adapter
 4. Expand JMH and end-to-end benchmarks with machine-readable output
 5. Add Lucene integration after the core backends stabilize
-
