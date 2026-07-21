@@ -1,15 +1,23 @@
 # VectorForge
 
-VectorForge is a Java-first vector search project built to compare exact nearest-neighbor search across a pure JVM baseline, a custom CUDA path, and an NVIDIA cuVS-backed implementation. The repository currently provides a CPU-only baseline with a backend-independent API, deterministic correctness behavior, unit tests, a demo CLI, and a benchmark module scaffold.
+VectorForge is a Java-first vector search project built to compare exact nearest-neighbor search across a pure JVM baseline, a future custom CUDA path, and a future NVIDIA cuVS-backed implementation. Today the repository provides a CPU-only baseline with a backend-independent API, deterministic correctness behavior, unit tests, a demo CLI, and a JMH benchmark harness.
+
+## Current Status
+
+- `cpu`: implemented, tested, and benchmarked
+- `cuda`: planned, not yet implemented
+- `cuvs`: planned, not yet implemented
+
+The current CPU backend is the correctness reference for all future native and GPU work.
 
 ## Motivation
 
-The goal is to make JVM, native, and GPU tradeoffs explicit in one repository:
+The repository is structured to make JVM, native, and GPU tradeoffs explicit:
 
 - A correctness-first CPU reference implementation
-- A clean Java API that future native and GPU backends can share
-- A project layout that stays runnable on machines without CUDA
-- A foundation for JNI, CUDA, and cuVS work without blocking early development
+- A stable Java API that future native and GPU backends can share
+- A build layout that remains usable on machines without CUDA
+- Reserved extension points for JNI, CUDA, and cuVS without blocking CPU-only development
 
 ## Architecture
 
@@ -17,18 +25,21 @@ The goal is to make JVM, native, and GPU tradeoffs explicit in one repository:
 flowchart LR
     Demo["Demo CLI"] --> API["vectorforge-api"]
     Bench["JMH Benchmarks"] --> API
-    CPU["CpuBruteForceIndex"] --> API
+    CPU["vectorforge-cpu"] --> API
     API --> Native["vectorforge-native (planned)"]
     Native --> GPU["vectorforge-gpu (planned)"]
     Native --> CUVS["cuVS Adapter (planned)"]
     Lucene["vectorforge-lucene (planned)"] --> API
 ```
 
-## Supported Backends
+The hot path for the implemented baseline is:
 
-- `cpu`: implemented and tested
-- `cuda`: planned, not yet implemented
-- `cuvs`: planned, not yet implemented
+1. The caller selects `--backend cpu` in the demo or directly constructs the CPU index.
+2. `vectorforge-api` validates the metric and search parameters.
+3. `CpuBruteForceIndex` flattens vectors into contiguous heap arrays, precomputes cosine norms, and publishes immutable state.
+4. Each query scans all indexed vectors, keeps only the best `k` scores in a bounded heap, and returns deterministic results ordered by score and ID.
+
+More detail lives in [docs/architecture.md](docs/architecture.md) and [docs/native-memory-model.md](docs/native-memory-model.md).
 
 ## Repository Layout
 
@@ -54,52 +65,44 @@ vectorforge/
 - CUDA toolkit: not required for the default build
 - NVIDIA cuVS: not required for the default build
 
-## CPU-Only Setup
+## Build and Test
+
+CPU-only development requires no native toolchain:
 
 ```powershell
-# from the repository root
 ./scripts/build-cpu.ps1
+mvn clean verify
+mvn test
 ```
 
-## CUDA Setup
-
-CUDA compilation and linking are not implemented yet. The `cuda` profile exists so future work can layer in native compilation without changing the top-level build contract.
+The repository also reserves future build entry points:
 
 ```powershell
-# from the repository root
 ./scripts/build-cuda.ps1
-```
-
-## cuVS Setup
-
-cuVS integration is not implemented yet. The `cuvs` profile is reserved for future native discovery and adapter wiring.
-
-```powershell
-# from the repository root
 ./scripts/build-cuvs.ps1
 ```
 
-## Build Commands
+`build-cuda.ps1` and `build-cuvs.ps1` are placeholders today because the `cuda` and `cuvs` backends are not implemented yet.
 
-```powershell
-mvn clean verify
-mvn test
-mvn -pl vectorforge-demo -am package
-```
+## Usage Examples
 
-## Demo Commands
-
-Build the demo:
+Build the shaded demo jar:
 
 ```powershell
 mvn -pl vectorforge-demo -am package
 ```
 
-Run the shaded jar:
+Run the verified CPU demo scenario:
 
 ```powershell
-java -jar vectorforge-demo/target/vectorforge-demo.jar --backend cpu --vectors 100000 --dimensions 384 --queries 100 --k 10
+java -jar vectorforge-demo/target/vectorforge-demo.jar --backend cpu --vectors 100000 --dimensions 384 --queries 100 --k 10 --metric cosine
 ```
+
+Verified output summary from the July 21, 2026 reference run:
+
+- `build_ms=83.728`
+- `search_ms=2908.539`
+- `avg_query_us=29085.390`
 
 Or use the helper script:
 
@@ -107,21 +110,37 @@ Or use the helper script:
 ./scripts/run-demo.ps1
 ```
 
-## Benchmark Methodology
+## Benchmark Methodology and Verified Results
 
-The detailed benchmark plan lives in [docs/benchmark-methodology.md](docs/benchmark-methodology.md). The repository includes a JMH module scaffold and a CPU search benchmark class, but no published performance claims.
+The benchmark process and environment details live in [docs/benchmark-methodology.md](docs/benchmark-methodology.md). The current verified CPU baseline was collected on July 21, 2026 with JMH:
 
-## Current Limitations
+| Benchmark | Params | Result |
+| --- | --- | --- |
+| `CpuBruteForceSearchBenchmark.searchTopK` | `dimensions=128`, `k=10`, `vectorCount=10000` | `894.760 +- 36.378 us/op` |
 
-- Only the CPU brute-force backend is implemented
-- The API supports single-query search; batched search is currently an implementation-specific extension on the CPU backend
-- Native, CUDA, and cuVS modules are placeholders to preserve the multi-module build shape
-- Benchmark result export and Markdown conversion are deferred until benchmark reporting is implemented
+Reference command:
+
+```powershell
+java -jar vectorforge-benchmarks/target/vectorforge-benchmarks.jar com.vectorforge.benchmarks.CpuBruteForceSearchBenchmark.searchTopK -wi 3 -i 5 -f 1
+```
+
+## Limitations
+
+- Only the CPU brute-force backend is implemented.
+- Search complexity is exact brute force; latency grows linearly with `vectorCount`.
+- The API standardizes single-query search; batched search is currently an implementation-specific CPU extension.
+- Native, CUDA, and cuVS modules are placeholders kept to preserve the multi-module build shape.
+- There is no verified GPU benchmark or cuVS validation yet because those backends do not exist in the current codebase.
+
+## Skipped Validation
+
+- GPU backend benchmarks were skipped because the `cuda` backend is not implemented.
+- cuVS validation was skipped because the `cuvs` backend is not implemented.
 
 ## Roadmap
 
-1. Add the JNI boundary with opaque native handles and explicit memory ownership
-2. Add a simple exact CUDA brute-force backend
-3. Integrate cuVS behind a narrow native adapter
-4. Expand JMH and end-to-end benchmarks with machine-readable output
-5. Add Lucene integration after the core backends stabilize
+1. Add the JNI boundary with opaque native handles and explicit memory ownership.
+2. Add a simple exact CUDA brute-force backend.
+3. Integrate cuVS behind a narrow native adapter.
+4. Expand JMH and end-to-end benchmark reporting.
+5. Add Lucene integration after the core backends stabilize.
