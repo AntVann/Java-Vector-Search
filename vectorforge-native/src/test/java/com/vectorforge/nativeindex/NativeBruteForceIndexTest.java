@@ -204,4 +204,3 @@ class NativeBruteForceIndexTest {
         return ByteBuffer.allocateDirect(Math.toIntExact(bytes)).order(ByteOrder.nativeOrder());
     }
 }
-

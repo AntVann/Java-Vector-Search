@@ -21,4 +21,3 @@ public record CudaSearchTimings(
         int k
 ) {
 }
-

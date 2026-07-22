@@ -347,4 +347,3 @@ public final class NativeBruteForceIndex implements VectorIndex {
     private record ValidatedQueryBatch(ByteBuffer queryBuffer, int queryCount) {
     }
 }
-

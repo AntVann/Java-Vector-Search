@@ -415,4 +415,3 @@ public final class CudaBruteForceIndex implements VectorIndex {
     private record ValidatedQueryBatch(ByteBuffer queryBuffer, int queryCount) {
     }
 }
-

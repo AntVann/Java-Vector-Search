@@ -65,7 +65,6 @@ inline bool is_better(const SearchCandidate& candidate, const SearchCandidate& c
             ? candidate.score < current.score
             : candidate.score > current.score;
 }
-
 inline bool is_worse(const SearchCandidate& left, const SearchCandidate& right, Metric metric) {
     if (left.score == right.score) {
         return left.id > right.id;
@@ -195,4 +194,3 @@ std::shared_ptr<NativeIndex> create_cuda_index(
 );
 
 } // namespace vectorforge
-

@@ -187,7 +187,6 @@ std::vector<float> compute_norms(const std::vector<float>& vectors, std::int32_t
     }
     return norms;
 }
-
 } // namespace
 
 std::shared_ptr<NativeIndex> create_cpu_index(
@@ -200,4 +199,3 @@ std::shared_ptr<NativeIndex> create_cpu_index(
 }
 
 } // namespace vectorforge
-

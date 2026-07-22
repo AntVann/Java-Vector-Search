@@ -13,4 +13,3 @@ public final class NativeInteropException extends RuntimeException {
         super(message, cause);
     }
 }
-
