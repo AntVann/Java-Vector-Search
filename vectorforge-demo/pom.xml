@@ -23,6 +23,16 @@
             <artifactId>vectorforge-cpu</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.vectorforge</groupId>
+            <artifactId>vectorforge-native</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.vectorforge</groupId>
+            <artifactId>vectorforge-gpu</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 
     <build>
@@ -51,4 +61,3 @@
         </plugins>
     </build>
 </project>
-

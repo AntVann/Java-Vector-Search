@@ -2,36 +2,7 @@
 
 ## Scope
 
-This repository establishes the API and CPU baseline while reserving clear extension points for native and GPU work. The currently verified implementation path is entirely CPU-backed.
-
-## Module Responsibilities
-
-- `vectorforge-api`: backend-independent contracts, result records, metrics, and parameter validation
-- `vectorforge-cpu`: exact brute-force reference implementation used for correctness and current benchmarks
-- `vectorforge-demo`: CLI entry point for build-and-search workflows and example usage
-- `vectorforge-benchmarks`: JMH harness for isolated search measurements
-- `vectorforge-native`: placeholder for JNI handle management and resource ownership
-- `vectorforge-gpu`: placeholder for a future custom CUDA backend
-- `vectorforge-lucene`: placeholder for later comparative integration
-
-## Current Request Flow
-
-```mermaid
-sequenceDiagram
-    participant Caller
-    participant Demo as Demo CLI
-    participant API as vectorforge-api
-    participant CPU as CpuBruteForceIndex
-
-    Caller->>Demo: --backend cpu --metric cosine
-    Demo->>API: create SearchParameters and metric
-    Demo->>CPU: build(vectors, ids)
-    CPU-->>CPU: flatten vectors and precompute norms
-    Caller->>Demo: search query
-    Demo->>CPU: search(query, k)
-    CPU-->>CPU: scan all vectors and maintain top-k heap
-    CPU-->>Demo: deterministic SearchResult list
-```
+The current repository keeps the API stable, preserves the CPU baseline, and adds an educational exact CUDA backend on top of the existing JNI layer.
 
 ## Java API Layer
 
@@ -54,45 +25,59 @@ The API intentionally keeps search inputs small and explicit so JNI and future o
 - Tie-breaking is deterministic: equal scores are ordered by ascending ID
 - Searches are safe to run concurrently after a successful build because index state is immutable once published
 
-Operational implications of the current design:
-
-- Build cost is paid once per dataset and is separate from search latency.
-- Search latency scales linearly with indexed vector count because the backend is exact brute force.
-- The CPU implementation is the baseline used to judge future CUDA and cuVS correctness.
-
 ## JNI Boundary
 
-`vectorforge-native` is currently a placeholder. The planned model is:
+`vectorforge-native` now contains:
+
+- `NativeBruteForceIndex`, which implements `VectorIndex`
+- `NativeBindings`, a small JNI entrypoint surface
+- `NativeLibraryLoader`, which loads the shared library from a configured path
+- A C++17 shared library built with CMake
+
+The boundary model is:
 
 - Java owns backend selection and public lifecycle
-- Native code owns opaque handles and device resources
-- Java never exposes raw native pointers to ordinary application code
-- Errors must cross the boundary as structured Java exceptions
+- Java stores opaque `long` handles, not native pointers
+- Native code owns the actual index objects in a handle table
+- Native code uses RAII-managed `shared_ptr<NativeIndex>` instances
+- Errors cross the boundary as structured Java exceptions
+
+JNI entrypoints currently support:
+
+- Native index creation from direct buffers
+- Batched search from direct buffers
+- Native index destruction
+- CUDA index creation through the same opaque-handle model
+- CUDA search with an explicit timing buffer
 
 ## Native Resource Ownership
 
-The current CPU baseline keeps all data on the Java heap. The future native ownership model is documented in [native-memory-model.md](native-memory-model.md).
+The detailed ownership model is documented in [native-memory-model.md](native-memory-model.md). In the current JNI path:
+
+- Java arrays are validated and packed into direct buffers
+- Native code copies those buffers into a C++ `NativeIndex`
+- Native index lifetime is bound to the Java wrapper handle lifecycle
 
 ## CUDA Backend
 
-`vectorforge-gpu` is reserved for an educational exact brute-force GPU implementation:
+`vectorforge-gpu` now provides `CudaBruteForceIndex`:
 
-- GPU-resident index vectors
-- Reusable device buffers
-- Batched queries
-- Explicit transfer and kernel timing
+- Indexed vectors are copied to device memory once during build and stay resident until `close()`
+- Query and score device buffers are grown lazily and then reused across searches
+- Batched queries are supported through one native call
+- The current kernel computes exact dot-product scores for every `(query, vector)` pair
+- Exact top-k selection happens on the host after copying scores back from device memory
+- Transfer, kernel, and total timing are recorded for every CUDA search
 
-This backend is not implemented yet, so all current build, test, demo, and benchmark results are CPU-only.
+The CPU implementation remains the correctness reference for this work.
 
 ## cuVS Adapter
 
-The future cuVS integration will be isolated behind a small native adapter layer so:
+The future cuVS integration will still be isolated behind a small native adapter layer so:
 
 - Java code is not tightly coupled to a volatile cuVS API surface
 - cuVS discovery can be profile-gated
 - The CPU-only build continues to work without CUDA or cuVS installed
-
-This adapter is not implemented yet, so cuVS validation is explicitly skipped in current project reporting.
 
 ## Error Propagation
 
@@ -101,11 +86,10 @@ Current behavior:
 - Invalid build inputs throw `IllegalArgumentException`
 - Invalid lifecycle usage throws `IllegalStateException`
 - Public API records validate mandatory fields at construction time
-
-Planned native behavior:
-
-- Native precondition failures become Java exceptions
-- CUDA and cuVS failures are never swallowed or converted into silent fallbacks
+- JNI argument validation throws `IllegalArgumentException`
+- Invalid or closed native handles throw `IllegalStateException`
+- Unexpected native failures throw `NativeInteropException`
+- CUDA and cuVS failures will never be swallowed or converted into silent fallbacks
 
 ## Thread-Safety Model
 
@@ -114,11 +98,14 @@ Planned native behavior:
 - Synchronized `build()` and `close()`
 - Lock-free concurrent `search()` calls after build through immutable published state
 
-Concurrent close versus in-flight search is not serialized. A search that already captured a published index snapshot may finish successfully while a concurrent close occurs.
+`NativeBruteForceIndex` supports:
 
-## Current Limitations
+- Concurrent public searches guarded by a read lock
+- Serialized `build()` and `close()` through a write lock
+- Safe replacement or destruction of native handles without racing in-flight public searches
 
-- There is no approximate index, graph index, or inverted-file structure yet.
-- There is no native memory path in the shipped implementation.
-- There is no GPU execution path despite the reserved modules and scripts.
-- Benchmark coverage currently reflects single-threaded CPU search only.
+`CudaBruteForceIndex` supports:
+
+- Serialized searches so a single GPU-resident buffer set can be reused safely
+- Serialized `build()` and `close()` through the same lifecycle lock pattern
+- Clear failure when CUDA support is not compiled or when no usable device is present

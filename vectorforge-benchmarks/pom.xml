@@ -24,6 +24,16 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>com.vectorforge</groupId>
+            <artifactId>vectorforge-native</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.vectorforge</groupId>
+            <artifactId>vectorforge-gpu</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.openjdk.jmh</groupId>
             <artifactId>jmh-core</artifactId>
             <version>${jmh.version}</version>
@@ -75,4 +85,3 @@
         </plugins>
     </build>
 </project>
-
