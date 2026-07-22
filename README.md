@@ -153,13 +153,29 @@ Observed CPU JMH result:
 
 | Benchmark | Params | Result |
 | --- | --- | --- |
-| `CpuBruteForceSearchBenchmark.searchTopK` | `dimensions=128`, `k=10`, `vectorCount=10000` | `953.574 +- 32.782 us/op` |
+| `CpuBruteForceSearchBenchmark.searchTopK` | `dimensions=128`, `k=10`, `vectorCount=10000` | `930.850 +- 10.293 us/op` |
 
 Reference command:
 
 ```powershell
 java -jar vectorforge-benchmarks/target/vectorforge-benchmarks.jar com.vectorforge.benchmarks.CpuBruteForceSearchBenchmark.searchTopK -wi 3 -i 5 -f 1
 ```
+
+Verified CUDA profile harness commands:
+
+```powershell
+java -Dvectorforge.native.library.dir=vectorforge-native/target/native-lib -cp vectorforge-benchmarks/target/vectorforge-benchmarks.jar com.vectorforge.benchmarks.CudaBackendProfileRunner --vectors 10000 --dimensions 128 --k 10 --warmup 30 --iterations 120 --small-queries 1 --batch-queries 32
+java -Dvectorforge.native.library.dir=vectorforge-native/target/native-lib -cp vectorforge-benchmarks/target/vectorforge-benchmarks.jar com.vectorforge.benchmarks.CudaBackendProfileRunner --vectors 50000 --dimensions 384 --k 10 --warmup 10 --iterations 20 --small-queries 1 --batch-queries 16
+```
+
+Representative current CUDA profile results:
+
+| Dataset | Path | Scenario | End-to-end avg | Kernel avg | Native total avg |
+| --- | --- | --- | --- | --- | --- |
+| `10000 x 128` | `high_level` | `single` | `191.667 us` | `0.018 ms` | `0.153 ms` |
+| `10000 x 128` | `high_level` | `batch x32` | `1050.008 us` | `0.109 ms` | `0.958 ms` |
+| `50000 x 384` | `high_level` | `single` | `504.095 us` | `0.202 ms` | `0.438 ms` |
+| `50000 x 384` | `high_level` | `batch x16` | `6516.940 us` | `4.788 ms` | `6.343 ms` |
 
 Verified end-to-end demo scenario:
 
@@ -173,18 +189,18 @@ Observed results:
 
 | Backend | `build_ms` | `search_ms` | `avg_query_us` |
 | --- | --- | --- | --- |
-| `cpu` | `86.855` | `2963.671` | `29636.713` |
-| `native` | `119.914` | `2793.152` | `27931.515` |
-| `cuda` | `305.865` | `438.178` | `4381.775` |
+| `cpu` | `88.015` | `3043.580` | `30435.804` |
+| `native` | `154.011` | `2930.033` | `29300.326` |
+| `cuda` | `477.857` | `101.818` | `1018.183` |
 
 Observed CUDA phase timings for that run:
 
 | Metric | Value |
 | --- | --- |
-| `cuda_h2d_ms` | `0.042` |
-| `cuda_kernel_ms` | `414.848` |
-| `cuda_d2h_ms` | `5.493` |
-| `cuda_total_ms` | `434.427` |
+| `cuda_h2d_ms` | `0.052` |
+| `cuda_kernel_ms` | `76.459` |
+| `cuda_d2h_ms` | `6.267` |
+| `cuda_total_ms` | `98.155` |
 
 ## Current Limitations
 
