@@ -10,8 +10,46 @@
     </parent>
 
     <artifactId>vectorforge-gpu</artifactId>
-    <packaging>pom</packaging>
     <name>VectorForge GPU</name>
-    <description>Placeholder module for future CUDA backends.</description>
+    <description>Java wrappers for GPU-backed VectorForge indexes.</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.vectorforge</groupId>
+            <artifactId>vectorforge-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.vectorforge</groupId>
+            <artifactId>vectorforge-native</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.vectorforge</groupId>
+            <artifactId>vectorforge-cpu</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <systemPropertyVariables>
+                        <vectorforge.cuda.enabled>${vectorforge.cuda.enabled}</vectorforge.cuda.enabled>
+                        <vectorforge.native.library.dir>${project.parent.basedir}/vectorforge-native/target/native-lib</vectorforge.native.library.dir>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
 </project>
 

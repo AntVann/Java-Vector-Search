@@ -2,26 +2,26 @@
 
 ## Status
 
-This document defines the benchmark rules VectorForge follows and records the currently verified CPU baseline. All results in this file were collected on July 21, 2026. No GPU or cuVS numbers are claimed because those backends are not implemented in the current repository state.
+This document defines the benchmark rules VectorForge follows and records the currently verified CPU, native, and CUDA results from the latest review pass. The repository contains one JMH benchmark today, for the CPU backend. Native and CUDA timings below come from verified demo executions because there is not yet a dedicated JMH harness for those backends.
 
 ## Verified Environment
 
 | Attribute | Value |
 | --- | --- |
-| Date | July 21, 2026 |
+| Date | July 22, 2026 |
 | OS | Windows 11 `10.0` `amd64` |
-| RuntimeInformation.OSDescription | `Microsoft Windows 10.0.26200` |
 | CPU | `AMD Ryzen 9 3900X 12-Core Processor` |
 | Logical processors | `24` |
-| JVM MaxRAM | `137438953472` bytes (`~128 GiB`) |
-| GPU present on host | `NVIDIA GeForce RTX 3070` |
+| GPU | `NVIDIA GeForce RTX 3070` |
 | GPU driver | `610.74` |
 | CUDA UMD | `13.3` |
-| GPU VRAM | `8192 MiB` |
 | Java | `OpenJDK 21.0.7 Temurin 21.0.7+6-LTS` |
 | Maven | `Apache Maven 3.9.9` |
 
-The installed GPU hardware is recorded for completeness only. It was not exercised by this repository because the `cuda` and `cuvs` backends are not available yet.
+## Available Benchmark Harnesses
+
+- `CpuBruteForceSearchBenchmark.searchTopK`
+- No dedicated JMH benchmark exists yet for the JNI or CUDA backends
 
 ## JVM Warm-Up
 
@@ -61,7 +61,7 @@ When GPU benchmarks are added:
 - Keep the GPU index resident between queries when that is how the backend is designed to run
 - Do not force the CPU backend to include unrelated setup work that the GPU backend excludes
 
-## Verified CPU Benchmark
+## Verified CPU JMH Benchmark
 
 Command:
 
@@ -86,35 +86,43 @@ Observed result:
 
 | Metric | Value |
 | --- | --- |
-| Score | `894.760 +- 36.378 us/op` |
-| Min | `881.203 us/op` |
-| Avg | `894.760 us/op` |
-| Max | `904.962 us/op` |
+| Score | `953.574 +- 32.782 us/op` |
+| Min | `943.592 us/op` |
+| Avg | `953.574 us/op` |
+| Max | `966.763 us/op` |
 
-This measurement isolates steady-state `searchTopK` cost. Build/setup work is intentionally excluded from the benchmarked method.
+## Verified End-to-End Demo Runs
 
-## Verified Demo Run
-
-Command:
+Commands:
 
 ```powershell
-java -jar vectorforge-demo/target/vectorforge-demo.jar --backend cpu --vectors 100000 --dimensions 384 --queries 100 --k 10 --metric cosine
+java -jar vectorforge-demo/target/vectorforge-demo.jar --backend cpu --vectors 100000 --dimensions 384 --queries 100 --k 10 --metric dot_product
+java -Dvectorforge.native.library.dir=vectorforge-native/target/native-lib -jar vectorforge-demo/target/vectorforge-demo.jar --backend native --vectors 100000 --dimensions 384 --queries 100 --k 10 --metric dot_product
+java -Dvectorforge.native.library.dir=vectorforge-native/target/native-lib -jar vectorforge-demo/target/vectorforge-demo.jar --backend cuda --vectors 100000 --dimensions 384 --queries 100 --k 10 --metric dot_product
 ```
 
-Observed output summary:
+Observed summary:
+
+| Backend | `build_ms` | `search_ms` | `avg_query_us` |
+| --- | --- | --- | --- |
+| `cpu` | `86.855` | `2963.671` | `29636.713` |
+| `native` | `119.914` | `2793.152` | `27931.515` |
+| `cuda` | `305.865` | `438.178` | `4381.775` |
+
+Observed CUDA phase timings:
 
 | Metric | Value |
 | --- | --- |
-| `build_ms` | `83.728` |
-| `search_ms` | `2908.539` |
-| `avg_query_us` | `29085.390` |
+| `cuda_h2d_ms` | `0.042` |
+| `cuda_kernel_ms` | `414.848` |
+| `cuda_d2h_ms` | `5.493` |
+| `cuda_total_ms` | `434.427` |
 
-This run is not a substitute for JMH. It is included as a reproducible end-to-end example that combines index build and search in the demo CLI.
+These demo numbers are not a substitute for JMH. They are included as verified end-to-end examples that exercise the current CPU, JNI, and CUDA paths under the same dataset shape.
 
 ## Skipped Validation
 
-- GPU backend benchmarks were skipped because the `cuda` backend is not implemented.
-- cuVS validation was skipped because the `cuvs` backend is not implemented.
+- cuVS validation was skipped because the `cuvs` backend is not implemented
 
 ## Why Kernel-Only Timing Is Insufficient
 

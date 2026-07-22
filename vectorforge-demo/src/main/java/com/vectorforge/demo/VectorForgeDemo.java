@@ -3,9 +3,14 @@ package com.vectorforge.demo;
 import com.vectorforge.api.DistanceMetric;
 import com.vectorforge.api.SearchParameters;
 import com.vectorforge.api.SearchResult;
+import com.vectorforge.api.VectorIndex;
 import com.vectorforge.cpu.CpuBruteForceIndex;
+import com.vectorforge.gpu.CudaBruteForceIndex;
+import com.vectorforge.gpu.CudaSearchTimings;
+import com.vectorforge.nativeindex.NativeBruteForceIndex;
 
 import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -19,34 +24,68 @@ public final class VectorForgeDemo {
     public static void main(String[] args) {
         DemoConfig config = DemoConfig.parse(args);
 
-        if (!"cpu".equals(config.backend())) {
-            System.err.println("Backend '" + config.backend() + "' is not available yet. Supported backend: cpu");
-            System.exit(2);
-        }
-
         float[][] vectors = generateVectors(config.vectors(), config.dimensions(), 42L);
         long[] ids = generateIds(config.vectors());
         float[][] queries = generateVectors(config.queries(), config.dimensions(), 84L);
 
-        try (CpuBruteForceIndex index = new CpuBruteForceIndex()) {
+        try (VectorIndex index = createIndex(config.backend())) {
             long buildStart = System.nanoTime();
             index.build(vectors, ids);
             long buildNanos = System.nanoTime() - buildStart;
 
             SearchParameters parameters = new SearchParameters(config.metric());
             long searchStart = System.nanoTime();
-            List<List<SearchResult>> allResults = index.searchBatch(queries, config.k(), parameters);
+            List<List<SearchResult>> allResults = searchAll(index, queries, config.k(), parameters);
             long searchNanos = System.nanoTime() - searchStart;
 
-            printSummary(config, buildNanos, searchNanos, allResults);
+            printSummary(config, buildNanos, searchNanos, allResults, cudaTimings(index));
+        } catch (IllegalArgumentException | IllegalStateException ex) {
+            System.err.println(ex.getMessage());
+            System.exit(2);
         }
+    }
+
+    private static VectorIndex createIndex(String backend) {
+        return switch (backend) {
+            case "cpu" -> new CpuBruteForceIndex();
+            case "native" -> new NativeBruteForceIndex();
+            case "cuda" -> new CudaBruteForceIndex();
+            case "cuvs" -> throw new IllegalArgumentException("Backend 'cuvs' is not implemented yet.");
+            default -> throw new IllegalArgumentException(
+                    "Unsupported backend '" + backend + "'. Supported backends: cpu, native, cuda"
+            );
+        };
+    }
+
+    private static List<List<SearchResult>> searchAll(
+            VectorIndex index,
+            float[][] queries,
+            int k,
+            SearchParameters parameters
+    ) {
+        if (index instanceof CpuBruteForceIndex cpu) {
+            return cpu.searchBatch(queries, k, parameters);
+        }
+        if (index instanceof NativeBruteForceIndex nativeIndex) {
+            return nativeIndex.searchBatch(queries, k, parameters);
+        }
+        if (index instanceof CudaBruteForceIndex cudaIndex) {
+            return cudaIndex.searchBatch(queries, k, parameters);
+        }
+
+        ArrayList<List<SearchResult>> results = new ArrayList<>(queries.length);
+        for (float[] query : queries) {
+            results.add(index.search(query, k, parameters));
+        }
+        return List.copyOf(results);
     }
 
     private static void printSummary(
             DemoConfig config,
             long buildNanos,
             long searchNanos,
-            List<List<SearchResult>> allResults
+            List<List<SearchResult>> allResults,
+            CudaSearchTimings cudaTimings
     ) {
         System.out.println("VectorForge Demo");
         System.out.println("backend=" + config.backend());
@@ -59,12 +98,23 @@ public final class VectorForgeDemo {
         System.out.printf(Locale.US, "search_ms=%.3f%n", searchNanos / 1_000_000.0);
         System.out.printf(Locale.US, "avg_query_us=%.3f%n", searchNanos / 1_000.0 / config.queries());
 
+        if (cudaTimings != null) {
+            System.out.printf(Locale.US, "cuda_h2d_ms=%.3f%n", cudaTimings.hostToDeviceMillis());
+            System.out.printf(Locale.US, "cuda_kernel_ms=%.3f%n", cudaTimings.kernelMillis());
+            System.out.printf(Locale.US, "cuda_d2h_ms=%.3f%n", cudaTimings.deviceToHostMillis());
+            System.out.printf(Locale.US, "cuda_total_ms=%.3f%n", cudaTimings.totalMillis());
+        }
+
         if (!allResults.isEmpty()) {
             System.out.println("sample_results_query_0=");
             for (SearchResult result : allResults.getFirst()) {
                 System.out.printf(Locale.US, "  id=%d score=%.6f%n", result.id(), result.score());
             }
         }
+    }
+
+    private static CudaSearchTimings cudaTimings(VectorIndex index) {
+        return index instanceof CudaBruteForceIndex cudaIndex ? cudaIndex.lastSearchTimings() : null;
     }
 
     private static float[][] generateVectors(int count, int dimensions, long seed) {
@@ -148,7 +198,7 @@ public final class VectorForgeDemo {
         private static IllegalArgumentException usage(String message) {
             return new IllegalArgumentException(message + System.lineSeparator()
                     + "Usage: java -jar vectorforge-demo.jar "
-                    + "--backend cpu --vectors 100000 --dimensions 384 --queries 100 --k 10 [--metric euclidean|cosine|dot_product]");
+                    + "--backend cpu|native|cuda --vectors 100000 --dimensions 384 --queries 100 --k 10 [--metric euclidean|cosine|dot_product]");
         }
     }
 }
