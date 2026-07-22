@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.20)
 project(vectorforge_jni LANGUAGES CXX)
 
 option(VECTORFORGE_ENABLE_CUDA "Enable the experimental CUDA backend" OFF)
+option(VECTORFORGE_ENABLE_CUVS "Enable the optional cuVS backend" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -38,6 +39,13 @@ if(VECTORFORGE_ENABLE_CUDA)
     find_package(CUDAToolkit REQUIRED)
     target_include_directories(vectorforge_jni PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
     target_compile_definitions(vectorforge_jni PRIVATE VECTORFORGE_ENABLE_CUDA=1)
+endif()
+
+if(VECTORFORGE_ENABLE_CUVS)
+    message(FATAL_ERROR
+        "VECTORFORGE_ENABLE_CUVS=ON was requested, but no verified local cuVS installation "
+        "was detected during the latest local inspection. See docs/cuvs-integration-plan.md."
+    )
 endif()
 
 if(MINGW)

@@ -34,7 +34,7 @@ flowchart LR
 - `cpu`: implemented and tested
 - `native`: implemented and tested through JNI and a C++17 shared library
 - `cuda`: implemented and tested as an exact dot-product backend
-- `cuvs`: planned, not implemented yet
+- `cuvs`: scaffolding only, blocked by missing local installation
 
 ## Repository Layout
 
@@ -93,12 +93,16 @@ cd vectorforge
 
 ## cuVS Setup
 
-cuVS is not integrated yet. The `cuvs` profile is reserved for future native discovery and adapter wiring.
+cuVS is blocked locally in this repository state. On Wednesday, July 22, 2026, no local cuVS headers, libraries, CMake package files, examples, or docs were detected under the CUDA toolkit, `Program Files`, or the user tree.
+
+The `cuvs` profile now exists as build scaffolding only. It fails early with a clear message until a real local cuVS installation is present and inspected.
 
 ```powershell
 cd vectorforge
 ./scripts/build-cuvs.ps1
 ```
+
+See [docs/cuvs-integration-plan.md](docs/cuvs-integration-plan.md) for the local detection results and the exact next integration steps once cuVS is installed.
 
 ## Build Commands
 
@@ -207,11 +211,12 @@ Observed CUDA phase timings for that run:
 - The shared `VectorIndex` API still exposes only single-query search; batched search is currently an implementation-specific extension on the CPU and native backends
 - The JNI backend currently packs Java arrays into direct buffers per call instead of reusing long-lived off-heap query buffers
 - The CUDA backend currently supports dot-product search only
+- The cuVS backend is not implemented because no local cuVS installation was detected during the latest local inspection
 - The CUDA implementation computes the full query-by-vector score matrix on the GPU and performs exact top-k selection on the host, which is correct but not performance-optimal
 - The benchmark module currently contains only a CPU JMH benchmark; native and CUDA timing is verified through the demo path rather than a dedicated JMH harness
 
 ## Roadmap
 
-1. Integrate cuVS behind a narrow native adapter
+1. Integrate cuVS behind a narrow native adapter once a local cuVS installation is available for inspection
 2. Expand JMH and end-to-end benchmarks with machine-readable output
 3. Add Lucene integration after the core backends stabilize
