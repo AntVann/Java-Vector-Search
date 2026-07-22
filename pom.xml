@@ -26,8 +26,10 @@
         <maven.compiler.release>21</maven.compiler.release>
         <junit.version>5.12.2</junit.version>
         <jmh.version>1.37</jmh.version>
+        <exec.maven.plugin.version>3.5.0</exec.maven.plugin.version>
         <vectorforge.cuda.enabled>false</vectorforge.cuda.enabled>
         <vectorforge.cuvs.enabled>false</vectorforge.cuvs.enabled>
+        <vectorforge.native.enabled>false</vectorforge.native.enabled>
     </properties>
 
     <dependencyManagement>
@@ -64,6 +66,11 @@
                     <version>3.5.2</version>
                 </plugin>
                 <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>exec-maven-plugin</artifactId>
+                    <version>${exec.maven.plugin.version}</version>
+                </plugin>
+                <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-shade-plugin</artifactId>
                     <version>3.6.0</version>
@@ -74,18 +81,25 @@
 
     <profiles>
         <profile>
+            <id>native</id>
+            <properties>
+                <vectorforge.native.enabled>true</vectorforge.native.enabled>
+            </properties>
+        </profile>
+        <profile>
             <id>cuda</id>
             <properties>
+                <vectorforge.native.enabled>true</vectorforge.native.enabled>
                 <vectorforge.cuda.enabled>true</vectorforge.cuda.enabled>
             </properties>
         </profile>
         <profile>
             <id>cuvs</id>
             <properties>
+                <vectorforge.native.enabled>true</vectorforge.native.enabled>
                 <vectorforge.cuda.enabled>true</vectorforge.cuda.enabled>
                 <vectorforge.cuvs.enabled>true</vectorforge.cuvs.enabled>
             </properties>
         </profile>
     </profiles>
 </project>
-
