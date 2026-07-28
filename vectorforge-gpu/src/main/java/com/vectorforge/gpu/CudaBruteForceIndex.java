@@ -130,6 +130,7 @@ public final class CudaBruteForceIndex implements VectorIndex {
      * @param parameters search controls
      * @return ordered nearest-neighbor results per query
      */
+    @Override
     public List<List<SearchResult>> searchBatch(float[][] queries, int k, SearchParameters parameters) {
         Objects.requireNonNull(parameters, "parameters must not be null");
         requireSupportedMetric(parameters.metric());
@@ -280,6 +281,7 @@ public final class CudaBruteForceIndex implements VectorIndex {
                 throw new IllegalArgumentException("vector at index " + row + " has dimension " + vector.length
                         + " but expected " + dimensions);
             }
+            validateFinite(vector, "vector at index " + row);
         }
 
         long elementCount = (long) vectors.length * dimensions;
@@ -302,6 +304,7 @@ public final class CudaBruteForceIndex implements VectorIndex {
             throw new IllegalArgumentException("query dimension " + query.length
                     + " does not match index dimension " + expectedDimensions);
         }
+        validateFinite(query, "query");
         ByteBuffer queryBuffer = allocateDirectBytes((long) expectedDimensions * Float.BYTES, "query values");
         queryBuffer.asFloatBuffer().put(query);
         return queryBuffer;
@@ -326,6 +329,7 @@ public final class CudaBruteForceIndex implements VectorIndex {
                 throw new IllegalArgumentException("query at index " + i + " has dimension " + query.length
                         + " but expected " + expectedDimensions);
             }
+            validateFinite(query, "query at index " + i);
             floatView.put(query);
         }
 
@@ -338,6 +342,14 @@ public final class CudaBruteForceIndex implements VectorIndex {
         }
         if (k > vectorCount) {
             throw new IllegalArgumentException("k must be <= vector count");
+        }
+    }
+
+    private static void validateFinite(float[] values, String description) {
+        for (int i = 0; i < values.length; i++) {
+            if (!Float.isFinite(values[i])) {
+                throw new IllegalArgumentException(description + " contains a non-finite value at dimension " + i);
+            }
         }
     }
 

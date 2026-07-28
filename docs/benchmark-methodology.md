@@ -2,7 +2,14 @@
 
 ## Status
 
-This document defines the benchmark rules VectorForge follows and records verified results. The repository contains a CPU JMH benchmark, a dedicated CUDA profiling harness, and a small CPU/custom-CUDA/cuVS end-to-end comparison runner.
+This document defines the benchmark rules VectorForge follows and records
+machine-specific results. The repository contains JMH benchmarks, a dedicated
+CUDA profiling harness, a resident-backend end-to-end runner, and a separate
+disk-IVF harness.
+
+The harnesses are not interchangeable: disk-IVF includes partition selection,
+I/O, candidate loading, and reranking, while resident-backend measurements do
+not. Smoke results are functional evidence, not generalized performance claims.
 
 ## Verified Environment
 
@@ -65,6 +72,11 @@ This document defines the benchmark rules VectorForge follows and records verifi
 - Keep index build time separate from search time
 - Keep the GPU index resident between queries when that is how the backend is designed to run
 - Do not force the CPU backend to include unrelated setup work that the GPU backend excludes
+- Prefer isolated JVMs or rotate backend execution order for serious comparisons;
+  current smoke runners use a fixed order and can be affected by JIT, cache,
+  power, and thermal state
+- Exact-backend validation should compare ordered IDs and score tolerances in
+  addition to set-based Recall@k
 
 ## Verified CPU JMH Benchmark
 

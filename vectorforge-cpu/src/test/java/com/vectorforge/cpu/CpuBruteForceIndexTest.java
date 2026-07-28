@@ -130,6 +130,8 @@ class CpuBruteForceIndexTest {
             assertThrows(IllegalArgumentException.class, () -> index.build(new float[][]{{1.0f}, null}, new long[]{1L, 2L}));
             assertThrows(IllegalArgumentException.class, () -> index.build(new float[][]{{1.0f}, {1.0f, 2.0f}}, new long[]{1L, 2L}));
             assertThrows(IllegalArgumentException.class, () -> index.build(new float[][]{{1.0f}, {2.0f}}, new long[]{7L, 7L}));
+            assertThrows(IllegalArgumentException.class, () -> index.build(new float[][]{{Float.NaN}}, new long[]{1L}));
+            assertThrows(IllegalArgumentException.class, () -> index.build(new float[][]{{Float.POSITIVE_INFINITY}}, new long[]{1L}));
         }
     }
 
@@ -149,6 +151,8 @@ class CpuBruteForceIndexTest {
             assertThrows(IllegalArgumentException.class, () -> index.search(new float[]{1.0f}, 1, new SearchParameters(DistanceMetric.EUCLIDEAN)));
             assertThrows(IllegalArgumentException.class, () -> index.search(new float[]{1.0f, 2.0f}, 0, new SearchParameters(DistanceMetric.EUCLIDEAN)));
             assertThrows(IllegalArgumentException.class, () -> index.search(new float[]{1.0f, 2.0f}, 2, new SearchParameters(DistanceMetric.EUCLIDEAN)));
+            assertThrows(IllegalArgumentException.class, () -> index.search(new float[]{Float.NEGATIVE_INFINITY, 2.0f}, 1,
+                    new SearchParameters(DistanceMetric.EUCLIDEAN)));
         }
     }
 
@@ -229,6 +233,23 @@ class CpuBruteForceIndexTest {
             assertEquals(2, results.size());
             assertEquals(List.of(1L, 3L), extractIds(results.get(0)));
             assertEquals(List.of(2L, 3L), extractIds(results.get(1)));
+        }
+    }
+
+    @Test
+    void batchSearchUsesTheSharedValidationContract() {
+        try (CpuBruteForceIndex index = new CpuBruteForceIndex()) {
+            assertThrows(IllegalStateException.class, () -> index.searchBatch(
+                    new float[][]{{1.0f}}, 1, new SearchParameters(DistanceMetric.DOT_PRODUCT)));
+            index.build(new float[][]{{1.0f}}, new long[]{1L});
+            assertThrows(IllegalArgumentException.class, () -> index.searchBatch(
+                    new float[0][], 1, new SearchParameters(DistanceMetric.DOT_PRODUCT)));
+            assertThrows(NullPointerException.class, () -> index.searchBatch(
+                    new float[][]{{1.0f}}, 1, null));
+            assertThrows(NullPointerException.class, () -> index.searchBatch(
+                    new float[][]{null}, 1, new SearchParameters(DistanceMetric.DOT_PRODUCT)));
+            assertThrows(IllegalArgumentException.class, () -> index.searchBatch(
+                    new float[][]{{1.0f}}, 0, new SearchParameters(DistanceMetric.DOT_PRODUCT)));
         }
     }
 

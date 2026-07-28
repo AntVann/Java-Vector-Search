@@ -20,7 +20,6 @@
         <vectorforge.native.tests.enabled>${vectorforge.native.enabled}</vectorforge.native.tests.enabled>
         <vectorforge.native.cmake.enable_cuda>OFF</vectorforge.native.cmake.enable_cuda>
         <vectorforge.native.cmake.enable_cuvs>OFF</vectorforge.native.cmake.enable_cuvs>
-        <vectorforge.native.cmake.generator>MinGW Makefiles</vectorforge.native.cmake.generator>
     </properties>
 
     <dependencies>
@@ -59,17 +58,6 @@
 
     <profiles>
         <profile>
-            <id>linux-cmake-generator</id>
-            <activation>
-                <os>
-                    <name>Linux</name>
-                </os>
-            </activation>
-            <properties>
-                <vectorforge.native.cmake.generator>Ninja</vectorforge.native.cmake.generator>
-            </properties>
-        </profile>
-        <profile>
             <id>native</id>
             <build>
                 <plugins>
@@ -90,8 +78,6 @@
                                         <argument>${project.basedir}</argument>
                                         <argument>-B</argument>
                                         <argument>${vectorforge.native.build.dir}</argument>
-                                        <argument>-G</argument>
-                                        <argument>${vectorforge.native.cmake.generator}</argument>
                                         <argument>-DCMAKE_BUILD_TYPE=Release</argument>
                                         <argument>-DOUTPUT_DIR=${vectorforge.native.output.dir}</argument>
                                         <argument>-DVECTORFORGE_ENABLE_CUDA=${vectorforge.native.cmake.enable_cuda}</argument>
@@ -144,8 +130,6 @@
                                         <argument>${project.basedir}</argument>
                                         <argument>-B</argument>
                                         <argument>${vectorforge.native.build.dir}</argument>
-                                        <argument>-G</argument>
-                                        <argument>${vectorforge.native.cmake.generator}</argument>
                                         <argument>-DCMAKE_BUILD_TYPE=Release</argument>
                                         <argument>-DOUTPUT_DIR=${vectorforge.native.output.dir}</argument>
                                         <argument>-DVECTORFORGE_ENABLE_CUDA=ON</argument>
@@ -198,8 +182,6 @@
                                         <argument>${project.basedir}</argument>
                                         <argument>-B</argument>
                                         <argument>${vectorforge.native.build.dir}</argument>
-                                        <argument>-G</argument>
-                                        <argument>${vectorforge.native.cmake.generator}</argument>
                                         <argument>-DCMAKE_BUILD_TYPE=Release</argument>
                                         <argument>-DOUTPUT_DIR=${vectorforge.native.output.dir}</argument>
                                         <argument>-DVECTORFORGE_ENABLE_CUDA=ON</argument>

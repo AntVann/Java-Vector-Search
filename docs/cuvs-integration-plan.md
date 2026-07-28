@@ -82,8 +82,8 @@ Current repository behavior when `VECTORFORGE_ENABLE_CUVS=ON` is requested:
 
 - Default full reactor: `mvn clean verify` passed.
 - Native profile: `mvn -Pnative clean verify` passed, including 5/5 native
-  tests. The WSL portability pass replaces the Windows-only generator
-  assumption with a Linux Ninja path; preserve the Windows MinGW behavior.
+  tests. CMake uses its platform default generator unless `CMAKE_GENERATOR` is
+  set; Windows verification selects Visual Studio and the WSL cuVS path uses Ninja.
 - CUDA profile: `mvn -Pcuda verify` passed after a clean configure/build,
   including CPU 9/9, native 5/5, and GPU 4/4 tests on the RTX 3070.
 - cuVS profile: `mvn -Pcuvs clean verify` passed against cuVS 26.06.00:

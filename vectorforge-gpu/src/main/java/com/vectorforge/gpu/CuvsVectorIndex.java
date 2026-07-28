@@ -96,6 +96,7 @@ public final class CuvsVectorIndex implements VectorIndex {
         }
     }
 
+    @Override
     public List<List<SearchResult>> searchBatch(float[][] queries, int k, SearchParameters parameters) {
         Objects.requireNonNull(parameters, "parameters must not be null");
         lifecycleLock.readLock().lock();
@@ -242,6 +243,7 @@ public final class CuvsVectorIndex implements VectorIndex {
                 throw new IllegalArgumentException("vector at index " + index + " has dimension "
                         + value.length + " but expected " + dimensions);
             }
+            validateFinite(value, "vector at index " + index);
             buffer.asFloatBuffer().position(index * dimensions).put(value);
         }
         return buffer;
@@ -250,6 +252,14 @@ public final class CuvsVectorIndex implements VectorIndex {
     private static void validateK(int k, int vectorCount) {
         if (k <= 0 || k > vectorCount) {
             throw new IllegalArgumentException("k must be positive and <= vector count");
+        }
+    }
+
+    private static void validateFinite(float[] values, String description) {
+        for (int i = 0; i < values.length; i++) {
+            if (!Float.isFinite(values[i])) {
+                throw new IllegalArgumentException(description + " contains a non-finite value at dimension " + i);
+            }
         }
     }
 

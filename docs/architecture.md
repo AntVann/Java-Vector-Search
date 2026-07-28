@@ -2,13 +2,15 @@
 
 ## Scope
 
-The current repository keeps the API stable, preserves the CPU baseline, and adds an educational exact CUDA backend on top of the existing JNI layer.
+The repository is a modular research and comparison project. The pure-Java CPU
+backend is the portability baseline; native, CUDA, cuVS, Lucene, benchmark, and
+disk-IVF capabilities are isolated in separate Maven modules.
 
 ## Java API Layer
 
 `vectorforge-api` defines:
 
-- `VectorIndex` as the backend-independent lifecycle and search contract
+- `VectorIndex` as the backend-independent lifecycle, scalar-search, and batch-search contract
 - Immutable value objects for results, parameters, and metrics
 - `DistanceMetric` as the algorithm-selection enum
 
@@ -73,9 +75,9 @@ The CPU implementation remains the correctness reference for this work.
 
 ## cuVS Adapter
 
-The future cuVS integration will still be isolated behind a small native adapter layer so:
+The cuVS integration is isolated behind a small native adapter layer so:
 
-- Java code is not tightly coupled to a volatile cuVS API surface
+- Java code is not tightly coupled to the version-specific cuVS API surface
 - cuVS discovery can be profile-gated
 - The CPU-only build continues to work without CUDA or cuVS installed
 

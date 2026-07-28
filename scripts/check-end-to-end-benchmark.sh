@@ -24,8 +24,8 @@ fi
 error_output="$(mktemp)"
 trap 'rm -f "$error_output"' EXIT
 if java -Dvectorforge.native.library.dir="$native_dir" -cp "$jar_path" "$main_class" \
-    --mode smoke --metrics DOT_PRODUCT --backends native \
-    --force-error-backend native --output "$error_output" >/dev/null 2>&1; then
+    --mode smoke --metrics DOT_PRODUCT --backends cpu \
+    --force-error-backend cpu --output "$error_output" >/dev/null 2>&1; then
   echo "expected forced detected-backend error to produce a nonzero exit" >&2
   exit 1
 fi
@@ -36,8 +36,8 @@ import sys
 
 records = [json.loads(line) for line in open(sys.argv[1], encoding="utf-8") if line.strip()]
 errors = [record for record in records if record["record_type"] == "error"]
-if len(errors) != 1 or errors[0]["backend"] != "native":
-    raise SystemExit("forced error did not produce one native error record")
+if len(errors) != 1 or errors[0]["backend"] != "cpu":
+    raise SystemExit("forced error did not produce one CPU error record")
 PY
 
 echo "End-to-end benchmark validation checks passed."

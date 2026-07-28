@@ -40,8 +40,11 @@ target_link_libraries(vectorforge_jni PRIVATE
     ${CMAKE_DL_LIBS}
 )
 
-if(VECTORFORGE_ENABLE_CUDA)
+if(VECTORFORGE_ENABLE_CUDA OR VECTORFORGE_ENABLE_CUVS)
     find_package(CUDAToolkit REQUIRED)
+endif()
+
+if(VECTORFORGE_ENABLE_CUDA)
     target_include_directories(vectorforge_jni PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
     target_compile_definitions(vectorforge_jni PRIVATE VECTORFORGE_ENABLE_CUDA=1)
 endif()
@@ -67,6 +70,9 @@ set_target_properties(vectorforge_jni PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${OUTPUT_DIR}"
     LIBRARY_OUTPUT_DIRECTORY "${OUTPUT_DIR}"
     RUNTIME_OUTPUT_DIRECTORY "${OUTPUT_DIR}"
+    ARCHIVE_OUTPUT_DIRECTORY_RELEASE "${OUTPUT_DIR}"
+    LIBRARY_OUTPUT_DIRECTORY_RELEASE "${OUTPUT_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${OUTPUT_DIR}"
 )
 
 if(WIN32)

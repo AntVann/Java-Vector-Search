@@ -14,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class CudaBruteForceIndexTest {
@@ -21,6 +22,8 @@ class CudaBruteForceIndexTest {
     @BeforeAll
     static void requireCudaProfileAndDevice() {
         assumeTrue(Boolean.getBoolean("vectorforge.cuda.enabled"), "CUDA tests require the -Pcuda profile");
+        assertTrue(com.vectorforge.nativeindex.NativeBindings.isCudaCompiled(),
+                "The -Pcuda profile must compile CUDA support");
         assumeTrue(CudaBruteForceIndex.isCudaAvailable(), "CUDA backend requires a usable GPU");
     }
 
@@ -142,10 +145,10 @@ class CudaBruteForceIndexTest {
             assertEquals(8, timings.queryCount());
             assertEquals(256, timings.vectorCount());
             assertEquals(10, timings.k());
-            assumeTrue(timings.totalMillis() >= 0.0);
-            assumeTrue(timings.hostToDeviceMillis() >= 0.0);
-            assumeTrue(timings.kernelMillis() >= 0.0);
-            assumeTrue(timings.deviceToHostMillis() >= 0.0);
+            assertTrue(Double.isFinite(timings.totalMillis()) && timings.totalMillis() >= 0.0);
+            assertTrue(Double.isFinite(timings.hostToDeviceMillis()) && timings.hostToDeviceMillis() >= 0.0);
+            assertTrue(Double.isFinite(timings.kernelMillis()) && timings.kernelMillis() >= 0.0);
+            assertTrue(Double.isFinite(timings.deviceToHostMillis()) && timings.deviceToHostMillis() >= 0.0);
         }
     }
 

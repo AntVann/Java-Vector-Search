@@ -80,8 +80,13 @@ public final class CpuBruteForceIndex implements VectorIndex {
      * @param parameters search controls
      * @return ordered search results for each query
      */
+    @Override
     public List<List<SearchResult>> searchBatch(float[][] queries, int k, SearchParameters parameters) {
         Objects.requireNonNull(queries, "queries must not be null");
+        Objects.requireNonNull(parameters, "parameters must not be null");
+        if (queries.length == 0) {
+            throw new IllegalArgumentException("queries must not be empty");
+        }
         ArrayList<List<SearchResult>> batchedResults = new ArrayList<>(queries.length);
         for (float[] query : queries) {
             batchedResults.add(search(query, k, parameters));
@@ -167,6 +172,7 @@ public final class CpuBruteForceIndex implements VectorIndex {
                 throw new IllegalArgumentException("vector at index " + row + " has dimension " + vector.length
                         + " but expected " + dimensions);
             }
+            validateFinite(vector, "vector at index " + row);
         }
 
         flattened = new float[vectorCount * dimensions];
@@ -187,6 +193,15 @@ public final class CpuBruteForceIndex implements VectorIndex {
         if (query.length != expectedDimensions) {
             throw new IllegalArgumentException("query dimension " + query.length
                     + " does not match index dimension " + expectedDimensions);
+        }
+        validateFinite(query, "query");
+    }
+
+    private static void validateFinite(float[] values, String description) {
+        for (int i = 0; i < values.length; i++) {
+            if (!Float.isFinite(values[i])) {
+                throw new IllegalArgumentException(description + " contains a non-finite value at dimension " + i);
+            }
         }
     }
 

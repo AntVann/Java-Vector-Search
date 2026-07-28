@@ -32,10 +32,16 @@ flowchart LR
 
 ## Supported Backends
 
-- `cpu`: implemented and tested
-- `native`: implemented and tested through JNI and a C++17 shared library
-- `cuda`: implemented and tested as an exact dot-product backend
-- `cuvs`: implemented as an optional exact brute-force backend using the verified cuVS 26.06 C API
+| Capability | Status | Notes |
+| --- | --- | --- |
+| Java CPU exact search | Complete | Default, hardware-independent correctness baseline |
+| Native C++ exact search | Complete, optional | Requires CMake and a C++17 compiler |
+| Custom CUDA exact search | Experimental | Requires supported NVIDIA hardware/toolkit; dot product only |
+| cuVS brute-force search | Experimental | Verified with cuVS 26.06 on Linux/WSL2 |
+| Lucene adapter | Experimental | Standalone adapter; no Lucene-internal integration |
+| Disk-backed IVF | Experimental | Immutable research prototype, not a database engine |
+| Approximate in-memory ANN | Planned | No production ANN index is implemented |
+| Production persistence/replication | Planned | Not implemented |
 
 ## Repository Layout
 
@@ -83,7 +89,8 @@ The CUDA backend is optional behind the existing `cuda` profile. The default bui
 
 - NVIDIA CUDA toolkit 12.x headers and NVRTC
 - An NVIDIA driver with a usable CUDA device
-- The existing MinGW-based native build through runtime-loaded CUDA APIs
+- A C++17 build selected by CMake's platform default generator, or by the
+  standard `CMAKE_GENERATOR` environment variable
 
 Build and test the CUDA backend with:
 
@@ -100,13 +107,16 @@ The local reference environment uses a Miniforge environment named `cuvs`. Make 
 
 ```bash
 conda activate cuvs
+export CMAKE_GENERATOR=Ninja
 export CMAKE_PREFIX_PATH="$CONDA_PREFIX${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
 export CUDAToolkit_ROOT="$CONDA_PREFIX/targets/x86_64-linux"
 export LD_LIBRARY_PATH="$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 mvn clean verify -Pcuvs
 ```
 
-The profile resolves the installed `cuvs::c_api` CMake target and links `libcuvs_c.so`. See [docs/cuvs-integration-plan.md](docs/cuvs-integration-plan.md) for the exact verified API surface and supported behavior.
+`CMAKE_GENERATOR` is optional when CMake's platform default generator is
+installed. The profile resolves the installed `cuvs::c_api` CMake target and
+links `libcuvs_c.so`. See [docs/cuvs-integration-plan.md](docs/cuvs-integration-plan.md) for the exact verified API surface and supported behavior.
 
 ## Build Commands
 
@@ -234,8 +244,8 @@ Observed CUDA phase timings for that run:
 - The CUDA implementation computes the full query-by-vector score matrix on the GPU and performs exact top-k selection on the host, which is correct but not performance-optimal
 - `BackendComparisonRunner` is a small end-to-end smoke profiler, not a substitute for JMH or a controlled cross-machine benchmark
 
-## Roadmap
+## Project Status
 
-1. Expand JMH and end-to-end benchmarks with machine-readable output
-2. Reduce cuVS query-time allocation and transfer overhead where measurements justify it
-3. Add Lucene integration after the core backends stabilize
+This repository is interview-ready research software, not a production service.
+See [docs/limitations.md](docs/limitations.md) for unsupported functionality and
+[CONTRIBUTING.md](CONTRIBUTING.md) for the required verification matrix.

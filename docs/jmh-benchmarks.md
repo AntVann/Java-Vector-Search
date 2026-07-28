@@ -53,7 +53,7 @@ java -jar vectorforge-benchmarks/target/vectorforge-benchmarks.jar \
   -rf json -rff benchmark-results/jmh-cpu-smoke.json
 ```
 
-That run completed successfully at `2.039 us/op`. The JSON file is retained only
+That run completed successfully at `2.001 us/op`. The JSON file is retained only
 as functional evidence that the packaged JMH launcher, benchmark discovery,
 parameter binding, fork, and result serialization work. Its timing is not a
 performance claim or a baseline.
