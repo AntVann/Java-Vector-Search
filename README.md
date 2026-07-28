@@ -147,6 +147,8 @@ The detailed benchmark plan and current verified results live in [docs/benchmark
 
 The CUDA backend design and timing model are documented in [docs/cuda-backend.md](docs/cuda-backend.md).
 
+For reproducible end-to-end CPU/custom-CUDA/cuVS runs with JSON Lines output, presets, system metadata, recall, memory snapshots, raw latency samples, and generated Markdown tables, see [docs/end-to-end-benchmarks.md](docs/end-to-end-benchmarks.md).
+
 ## Verified Results
 
 These commands were re-run successfully in the current review pass:
