@@ -18,6 +18,7 @@
         <module>vectorforge-gpu</module>
         <module>vectorforge-benchmarks</module>
         <module>vectorforge-lucene</module>
+        <module>vectorforge-disk</module>
         <module>vectorforge-demo</module>
     </modules>
 

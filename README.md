@@ -27,6 +27,7 @@ flowchart LR
     NativeCpp --> GPU["CUDA Driver + NVRTC Kernel"]
     NativeCpp --> CUVS["cuVS 26.06 C API"]
     Lucene["vectorforge-lucene adapter"] --> API
+    Disk["vectorforge-disk experimental IVF"] --> API
 ```
 
 ## Supported Backends
@@ -145,6 +146,11 @@ The standalone Lucene integration is documented in
 [`docs/lucene-integration.md`](docs/lucene-integration.md). Its CPU-only demo uses Lucene public
 APIs, rebuilds VectorForge from live documents at an explicit refresh boundary, and compares
 VectorForge results with Lucene's built-in vector search.
+
+The experimental disk-backed IVF path is documented in
+[`docs/disk-ivf-prototype.md`](docs/disk-ivf-prototype.md). It stores immutable partition
+generations on disk, probes selected posting lists, and reranks every selected candidate with an
+existing VectorForge backend in byte-bounded batches.
 
 ## Benchmark Methodology
 
