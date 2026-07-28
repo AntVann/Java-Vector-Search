@@ -22,6 +22,13 @@ public final class NativeBindings {
         return nativeCreateCudaIndex(vectorsBuffer, idsBuffer, vectorCount, dimensions);
     }
 
+    public static long createCuvsIndex(ByteBuffer vectorsBuffer, ByteBuffer idsBuffer, int vectorCount, int dimensions) {
+        NativeLibraryLoader.load();
+        Objects.requireNonNull(vectorsBuffer, "vectorsBuffer must not be null");
+        Objects.requireNonNull(idsBuffer, "idsBuffer must not be null");
+        return nativeCreateCuvsIndex(vectorsBuffer, idsBuffer, vectorCount, dimensions);
+    }
+
     public static void search(
             long handle,
             ByteBuffer queriesBuffer,
@@ -73,9 +80,21 @@ public final class NativeBindings {
         return nativeGetCudaDeviceCount();
     }
 
+    public static boolean isCuvsCompiled() {
+        NativeLibraryLoader.load();
+        return nativeIsCuvsCompiled();
+    }
+
+    public static String getCuvsVersion() {
+        NativeLibraryLoader.load();
+        return nativeGetCuvsVersion();
+    }
+
     private static native long nativeCreateIndex(ByteBuffer vectorsBuffer, ByteBuffer idsBuffer, int vectorCount, int dimensions);
 
     private static native long nativeCreateCudaIndex(ByteBuffer vectorsBuffer, ByteBuffer idsBuffer, int vectorCount, int dimensions);
+
+    private static native long nativeCreateCuvsIndex(ByteBuffer vectorsBuffer, ByteBuffer idsBuffer, int vectorCount, int dimensions);
 
     private static native void nativeSearch(
             long handle,
@@ -105,4 +124,8 @@ public final class NativeBindings {
     private static native boolean nativeIsCudaCompiled();
 
     private static native int nativeGetCudaDeviceCount();
+
+    private static native boolean nativeIsCuvsCompiled();
+
+    private static native String nativeGetCuvsVersion();
 }

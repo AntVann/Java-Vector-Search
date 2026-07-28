@@ -23,6 +23,7 @@ set(VECTORFORGE_NATIVE_SOURCES
     src/main/cpp/native_bruteforce_jni.cpp
     src/main/cpp/native_cpu_index.cpp
     src/main/cpp/native_cuda_index.cpp
+    src/main/cpp/native_cuvs_index.cpp
 )
 
 add_library(vectorforge_jni SHARED ${VECTORFORGE_NATIVE_SOURCES})
@@ -35,6 +36,10 @@ target_compile_definitions(vectorforge_jni PRIVATE
     NOMINMAX
 )
 
+target_link_libraries(vectorforge_jni PRIVATE
+    ${CMAKE_DL_LIBS}
+)
+
 if(VECTORFORGE_ENABLE_CUDA)
     find_package(CUDAToolkit REQUIRED)
     target_include_directories(vectorforge_jni PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
@@ -42,9 +47,11 @@ if(VECTORFORGE_ENABLE_CUDA)
 endif()
 
 if(VECTORFORGE_ENABLE_CUVS)
-    message(FATAL_ERROR
-        "VECTORFORGE_ENABLE_CUVS=ON was requested, but no verified local cuVS installation "
-        "was detected during the latest local inspection. See docs/cuvs-integration-plan.md."
+    find_package(cuvs CONFIG REQUIRED COMPONENTS c_api)
+    target_compile_definitions(vectorforge_jni PRIVATE VECTORFORGE_ENABLE_CUVS=1)
+    target_link_libraries(vectorforge_jni PRIVATE
+        cuvs::c_api
+        CUDA::cudart
     )
 endif()
 
@@ -57,8 +64,11 @@ endif()
 
 set_target_properties(vectorforge_jni PROPERTIES
     OUTPUT_NAME "vectorforge_jni"
-    PREFIX ""
     ARCHIVE_OUTPUT_DIRECTORY "${OUTPUT_DIR}"
     LIBRARY_OUTPUT_DIRECTORY "${OUTPUT_DIR}"
     RUNTIME_OUTPUT_DIRECTORY "${OUTPUT_DIR}"
 )
+
+if(WIN32)
+    set_target_properties(vectorforge_jni PROPERTIES PREFIX "")
+endif()

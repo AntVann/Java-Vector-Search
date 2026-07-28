@@ -45,6 +45,7 @@
                 <configuration>
                     <systemPropertyVariables>
                         <vectorforge.cuda.enabled>${vectorforge.cuda.enabled}</vectorforge.cuda.enabled>
+                        <vectorforge.cuvs.enabled>${vectorforge.cuvs.enabled}</vectorforge.cuvs.enabled>
                         <vectorforge.native.library.dir>${project.parent.basedir}/vectorforge-native/target/native-lib</vectorforge.native.library.dir>
                     </systemPropertyVariables>
                 </configuration>

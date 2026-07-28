@@ -7,6 +7,7 @@ import com.vectorforge.api.VectorIndex;
 import com.vectorforge.cpu.CpuBruteForceIndex;
 import com.vectorforge.gpu.CudaBruteForceIndex;
 import com.vectorforge.gpu.CudaSearchTimings;
+import com.vectorforge.gpu.CuvsVectorIndex;
 import com.vectorforge.nativeindex.NativeBruteForceIndex;
 
 import java.util.LinkedHashMap;
@@ -50,9 +51,9 @@ public final class VectorForgeDemo {
             case "cpu" -> new CpuBruteForceIndex();
             case "native" -> new NativeBruteForceIndex();
             case "cuda" -> new CudaBruteForceIndex();
-            case "cuvs" -> throw new IllegalArgumentException("Backend 'cuvs' is not implemented yet.");
+            case "cuvs" -> new CuvsVectorIndex();
             default -> throw new IllegalArgumentException(
-                    "Unsupported backend '" + backend + "'. Supported backends: cpu, native, cuda"
+                    "Unsupported backend '" + backend + "'. Supported backends: cpu, native, cuda, cuvs"
             );
         };
     }
@@ -71,6 +72,9 @@ public final class VectorForgeDemo {
         }
         if (index instanceof CudaBruteForceIndex cudaIndex) {
             return cudaIndex.searchBatch(queries, k, parameters);
+        }
+        if (index instanceof CuvsVectorIndex cuvsIndex) {
+            return cuvsIndex.searchBatch(queries, k, parameters);
         }
 
         ArrayList<List<SearchResult>> results = new ArrayList<>(queries.length);
@@ -198,7 +202,7 @@ public final class VectorForgeDemo {
         private static IllegalArgumentException usage(String message) {
             return new IllegalArgumentException(message + System.lineSeparator()
                     + "Usage: java -jar vectorforge-demo.jar "
-                    + "--backend cpu|native|cuda --vectors 100000 --dimensions 384 --queries 100 --k 10 [--metric euclidean|cosine|dot_product]");
+                    + "--backend cpu|native|cuda|cuvs --vectors 100000 --dimensions 384 --queries 100 --k 10 [--metric euclidean|cosine|dot_product]");
         }
     }
 }

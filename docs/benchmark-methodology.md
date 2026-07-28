@@ -2,7 +2,7 @@
 
 ## Status
 
-This document defines the benchmark rules VectorForge follows and records the currently verified CPU, native, and CUDA results from the latest review pass. The repository contains one JMH benchmark for the CPU backend and one dedicated CUDA profiling harness for JNI and GPU phase timing.
+This document defines the benchmark rules VectorForge follows and records verified results. The repository contains a CPU JMH benchmark, a dedicated CUDA profiling harness, and a small CPU/custom-CUDA/cuVS end-to-end comparison runner.
 
 ## Verified Environment
 
@@ -25,6 +25,10 @@ This document defines the benchmark rules VectorForge follows and records the cu
   - profiles both the high-level `CudaBruteForceIndex` path and the raw `NativeBindings.searchCuda` path
   - reports end-to-end latency plus internal CUDA phase timings
   - distinguishes single-query and batched-query behavior
+- `BackendComparisonRunner`
+  - uses the same generated vectors, queries, IDs, metric, and `k` for CPU Java, custom CUDA, and cuVS
+  - reports build time, raw batch-search samples, p50/p95/p99, average, and whether result IDs match the CPU baseline
+  - is a smoke/profile harness rather than JMH
 
 ## JVM Warm-Up
 
@@ -186,9 +190,67 @@ Observed CUDA phase timings:
 
 These demo numbers are not a substitute for JMH. They are included as verified end-to-end examples that exercise the current CPU, JNI, and CUDA paths under the same dataset shape.
 
-## Skipped Validation
+## CPU, Custom CUDA, and cuVS Comparison
 
-- cuVS validation was skipped because the `cuvs` backend is not implemented
+Build the cuVS-enabled native library and benchmark jar first, then run:
+
+```bash
+export LD_LIBRARY_PATH="$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+java -Dvectorforge.native.library.dir=vectorforge-native/target/native-lib \
+  -cp vectorforge-benchmarks/target/vectorforge-benchmarks.jar \
+  com.vectorforge.benchmarks.BackendComparisonRunner \
+  --vectors 10000 --dimensions 128 --queries 16 --k 10 --warmup 5 --iterations 10
+```
+
+The runner intentionally uses dot product because it is the common metric supported by all three compared backends. Its wall-clock measurements include Java packing, JNI, transfers, synchronization, native result conversion, and Java result materialization. Build time is reported separately. Raw samples should be retained when recording results.
+
+Results from one laptop run belong here only as machine-specific smoke evidence. They must not be interpreted as a performance-superiority claim: the harness has no JMH forks, a short warm-up, sequential backend execution, and different backend implementation strategies.
+
+### Laptop Smoke Results
+
+Recorded July 27, 2026 in Ubuntu under WSL2 using OpenJDK 21, cuVS 26.06, CUDA 12.9, and an NVIDIA GeForce RTX 3070. The native library came from the same clean `-Pcuvs` reactor run whose CPU, native, custom-CUDA, and cuVS tests passed.
+
+Exact command:
+
+```bash
+export LD_LIBRARY_PATH=/home/antho/miniforge3/envs/cuvs/lib
+/home/antho/miniforge3/envs/cuvs/bin/java \
+  -Dvectorforge.native.library.dir=/mnt/c/Users/antho/Desktop/Java-Vector-Search/vectorforge-native/target/native-lib \
+  -cp /mnt/c/Users/antho/Desktop/Java-Vector-Search/vectorforge-benchmarks/target/vectorforge-benchmarks.jar \
+  com.vectorforge.benchmarks.BackendComparisonRunner \
+  --vectors 10000 --dimensions 128 --queries 16 --k 10 --warmup 5 --iterations 10
+```
+
+Observed summary:
+
+| Backend | Build | CPU result IDs matched | Batch average | p50 | p95 | p99 |
+| --- | ---: | --- | ---: | ---: | ---: | ---: |
+| CPU Java | `8.235 ms` | `true` | `20894.565 us` | `19809.089 us` | `23939.029 us` | `23939.029 us` |
+| Custom CUDA | `330.708 ms` | `true` | `1212.033 us` | `1042.474 us` | `2710.555 us` | `2710.555 us` |
+| cuVS | `170.074 ms` | `true` | `486.459 us` | `459.480 us` | `857.841 us` | `857.841 us` |
+
+Raw end-to-end batch samples in execution order:
+
+```text
+cpu_us=[19809.089,19009.228,23939.029,23347.119,19597.634,23875.297,20434.819,20492.942,19359.114,19081.378]
+cuda_us=[937.404,1229.561,1063.912,970.462,1119.834,1118.412,933.807,993.907,1042.474,2710.555]
+cuvs_us=[482.931,461.049,475.937,437.262,352.140,315.813,643.897,857.841,459.480,378.235]
+```
+
+These samples cover complete 16-query batch calls, not individual queries. All compared backends returned the same ordered result IDs as the CPU reference for this seeded input. Score agreement is covered separately by correctness tests.
+
+This is smoke evidence only. Ten measurements after five warm-up calls are insufficient for generalized performance conclusions. The backends ran sequentially in one JVM, build implementations differ, WSL and laptop power/thermal state can affect results, and this harness does not use JMH forks or confidence intervals.
+
+The cuVS demo path was also smoke-tested with:
+
+```bash
+/home/antho/miniforge3/envs/cuvs/bin/java \
+  -Dvectorforge.native.library.dir=/mnt/c/Users/antho/Desktop/Java-Vector-Search/vectorforge-native/target/native-lib \
+  -jar /mnt/c/Users/antho/Desktop/Java-Vector-Search/vectorforge-demo/target/vectorforge-demo.jar \
+  --backend cuvs --vectors 1000 --dimensions 32 --queries 2 --k 5 --metric dot_product
+```
+
+It completed successfully and returned five results per query. Its observed `build_ms=266.138` and `search_ms=94.328` include first-use startup effects and are recorded only as functional smoke output.
 
 ## Why Kernel-Only Timing Is Insufficient
 

@@ -1,6 +1,6 @@
 # VectorForge Agent Handoff
 
-Last updated: July 28, 2026
+Last updated: July 27, 2026
 
 This file is the repo-backed handoff for continuing VectorForge on another computer when the original Codex task list is not visible.
 
@@ -86,8 +86,58 @@ This file is the repo-backed handoff for continuing VectorForge on another compu
    - paste the relevant section from this file
    - continue from the branch state instead of relying on old sidebar history
 
-## Known platform constraint
+## Current laptop environment
 
-- cuVS is not yet integrated in this repository.
-- The latest implementation task stopped because no verified local cuVS installation was available to inspect.
-- For future cuVS work, treat actual local cuVS inspection as mandatory before writing adapter code.
+The replacement work laptop now has a verified Linux GPU development environment:
+
+- Ubuntu under WSL2
+- Conda environment: `/home/antho/miniforge3/envs/cuvs`
+- OpenJDK: 21.0.10
+- Maven: 3.9.16
+- CMake: 4.4.0
+- Ninja: 1.13.2
+- Conda GCC/G++: 14.3.0
+  (`/home/antho/miniforge3/envs/cuvs/bin/x86_64-conda-linux-gnu-c++`)
+- CUDA toolkit/runtime: 12.9
+- cuVS: 26.06.00
+- DLPack headers/package: installed in the `cuvs` environment
+- GPU passthrough: NVIDIA GeForce RTX 3070, compute capability 8.6
+
+Verified cuVS installation artifacts include:
+
+- `/home/antho/miniforge3/envs/cuvs/lib/libcuvs.so`
+- `/home/antho/miniforge3/envs/cuvs/lib/libcuvs_c.so`
+- installed cuVS headers
+- installed cuVS CMake package configuration
+
+A standalone direct cuVS C API probe was compiled and run successfully against
+the installed package. The first VectorForge cuVS brute-force adapter has since
+been implemented and validated on this machine.
+
+## Current build validation
+
+- `mvn clean verify`: passed for the full eight-module reactor.
+- `mvn -Pnative clean verify`: passed; native tests passed 5/5. The original
+  checkout exposed a Windows-only `MinGW Makefiles` generator assumption under
+  WSL. The current uncommitted portability work selects Ninja on the Linux
+  environment and adds the platform-specific shared-library handling needed by
+  the native module.
+- `mvn -Pcuda verify`: passed after a clean configure/build; CPU tests passed
+  9/9, native tests passed 5/5, and GPU tests passed 4/4 on the RTX 3070.
+- The clean `-Pcuvs` run configured cuVS 26.06 successfully. After fixing the
+  explicit CUDA Runtime link and the installed API's device-tensor and
+  `int64_t` neighbor requirements, `-Pcuvs` verification passed: CPU 9/9,
+  native 5/5, custom CUDA 4/4, and cuVS 5/5.
+- `mvn -Pnative clean verify` passed on Windows, including native 5/5.
+- The CPU/custom-CUDA/cuVS demo and smoke comparison runner passed; raw
+  samples and caveats are recorded in `docs/benchmark-methodology.md`.
+
+## Exact continuation state
+
+The first exact cuVS brute-force integration is operational. The next
+implementation agent should:
+
+1. Preserve the passing default, native, CUDA, and cuVS profile matrix.
+2. Use JMH-quality methodology before making generalized performance claims.
+3. Add other cuVS index families only from verified installed APIs, with
+   Recall@k coverage for approximate search.

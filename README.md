@@ -1,6 +1,6 @@
 # VectorForge
 
-VectorForge is a Java-first vector search project built to compare exact nearest-neighbor search across a pure JVM baseline, a custom CUDA path, and an NVIDIA cuVS-backed implementation. The current repository provides a CPU baseline, a JNI-backed native reference backend, and an educational exact CUDA backend.
+VectorForge is a Java-first vector search project built to compare exact nearest-neighbor search across a pure JVM baseline, a custom CUDA path, and an NVIDIA cuVS-backed implementation. The repository provides a CPU baseline, a JNI-backed native reference backend, an educational exact CUDA backend, and an optional exact cuVS brute-force backend.
 
 ## Motivation
 
@@ -25,7 +25,7 @@ flowchart LR
     GpuJava["CudaBruteForceIndex"] --> API
     GpuJava --> NativeCpp
     NativeCpp --> GPU["CUDA Driver + NVRTC Kernel"]
-    NativeCpp --> CUVS["cuVS Adapter (planned)"]
+    NativeCpp --> CUVS["cuVS 26.06 C API"]
     Lucene["vectorforge-lucene (planned)"] --> API
 ```
 
@@ -34,7 +34,7 @@ flowchart LR
 - `cpu`: implemented and tested
 - `native`: implemented and tested through JNI and a C++17 shared library
 - `cuda`: implemented and tested as an exact dot-product backend
-- `cuvs`: scaffolding only, blocked by missing local installation
+- `cuvs`: implemented as an optional exact brute-force backend using the verified cuVS 26.06 C API
 
 ## Repository Layout
 
@@ -93,16 +93,19 @@ cd vectorforge
 
 ## cuVS Setup
 
-cuVS is blocked locally in this repository state. On Wednesday, July 22, 2026, no local cuVS headers, libraries, CMake package files, examples, or docs were detected under the CUDA toolkit, `Program Files`, or the user tree.
+The verified cuVS path is Linux/WSL2 with cuVS 26.06, CUDA 12.x, CMake 3.30.4 or newer, Ninja, a C++17 compiler, and DLPack headers. The default build does not require any of these cuVS dependencies.
 
-The `cuvs` profile now exists as build scaffolding only. It fails early with a clear message until a real local cuVS installation is present and inspected.
+The local reference environment uses a Miniforge environment named `cuvs`. Make the environment prefix visible to CMake and the runtime linker:
 
-```powershell
-cd vectorforge
-./scripts/build-cuvs.ps1
+```bash
+conda activate cuvs
+export CMAKE_PREFIX_PATH="$CONDA_PREFIX${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
+export CUDAToolkit_ROOT="$CONDA_PREFIX/targets/x86_64-linux"
+export LD_LIBRARY_PATH="$CONDA_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+mvn clean verify -Pcuvs
 ```
 
-See [docs/cuvs-integration-plan.md](docs/cuvs-integration-plan.md) for the local detection results and the exact next integration steps once cuVS is installed.
+The profile resolves the installed `cuvs::c_api` CMake target and links `libcuvs_c.so`. See [docs/cuvs-integration-plan.md](docs/cuvs-integration-plan.md) for the exact verified API surface and supported behavior.
 
 ## Build Commands
 
@@ -111,6 +114,7 @@ mvn clean verify
 mvn test
 mvn clean verify -Pnative
 mvn clean verify -Pcuda
+mvn clean verify -Pcuvs
 mvn -pl vectorforge-demo -am package
 ```
 
@@ -128,6 +132,7 @@ Run the shaded jar:
 java -jar vectorforge-demo/target/vectorforge-demo.jar --backend cpu --vectors 100000 --dimensions 384 --queries 100 --k 10
 java -Dvectorforge.native.library.dir=vectorforge-native/target/native-lib -jar vectorforge-demo/target/vectorforge-demo.jar --backend native --vectors 100000 --dimensions 384 --queries 100 --k 10
 java -Dvectorforge.native.library.dir=vectorforge-native/target/native-lib -jar vectorforge-demo/target/vectorforge-demo.jar --backend cuda --vectors 100000 --dimensions 384 --queries 100 --k 10 --metric dot_product
+java -Dvectorforge.native.library.dir=vectorforge-native/target/native-lib -jar vectorforge-demo/target/vectorforge-demo.jar --backend cuvs --vectors 10000 --dimensions 128 --queries 16 --k 10 --metric dot_product
 ```
 
 Or use the helper script:
@@ -211,12 +216,13 @@ Observed CUDA phase timings for that run:
 - The shared `VectorIndex` API still exposes only single-query search; batched search is currently an implementation-specific extension on the CPU and native backends
 - The JNI backend currently packs Java arrays into direct buffers per call instead of reusing long-lived off-heap query buffers
 - The CUDA backend currently supports dot-product search only
-- The cuVS backend is not implemented because no local cuVS installation was detected during the latest local inspection
+- The cuVS build is currently verified only with cuVS 26.06 on Linux/WSL2; Windows-native cuVS packaging is not provided
+- The cuVS adapter uses exact brute-force search and builds one metric-bound cuVS index for each VectorForge metric, increasing device-memory use
 - The CUDA implementation computes the full query-by-vector score matrix on the GPU and performs exact top-k selection on the host, which is correct but not performance-optimal
-- The benchmark module currently contains only a CPU JMH benchmark; native and CUDA timing is verified through the demo path rather than a dedicated JMH harness
+- `BackendComparisonRunner` is a small end-to-end smoke profiler, not a substitute for JMH or a controlled cross-machine benchmark
 
 ## Roadmap
 
-1. Integrate cuVS behind a narrow native adapter once a local cuVS installation is available for inspection
-2. Expand JMH and end-to-end benchmarks with machine-readable output
+1. Expand JMH and end-to-end benchmarks with machine-readable output
+2. Reduce cuVS query-time allocation and transfer overhead where measurements justify it
 3. Add Lucene integration after the core backends stabilize

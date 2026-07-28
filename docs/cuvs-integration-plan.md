@@ -2,67 +2,67 @@
 
 ## Status
 
-Date of local inspection: Wednesday, July 22, 2026.
+Date of replacement-laptop inspection: July 27, 2026.
 
-The cuVS integration path is blocked locally because no cuVS installation was detected on this machine.
+The earlier missing-installation blocker has been cleared. A verified cuVS
+26.06.00 installation is available in Ubuntu under WSL2, and the exact
+brute-force adapter, JNI entry points, Java wrapper, tests, demo, and smoke
+comparison runner are implemented.
 
-In the current repository state, the implementation stops at:
+The implementation must use the exact installed API surface described below;
+it must not invent or guess cuVS calls.
 
-- verified local detection results
-- optional Maven/CMake scaffolding
-- a concrete integration plan
+## Verified Local Environment
 
-It does not add invented cuVS adapter calls, guessed headers, guessed JNI entry points, or guessed integration code.
+- Platform: Ubuntu under WSL2
+- Conda environment: `/home/antho/miniforge3/envs/cuvs`
+- OpenJDK: 21.0.10
+- Maven: 3.9.16
+- CMake: 4.4.0
+- Ninja: 1.13.2
+- Conda GCC/G++: 14.3.0
+  (`/home/antho/miniforge3/envs/cuvs/bin/x86_64-conda-linux-gnu-c++`)
+- CUDA toolkit/runtime: 12.9
+- cuVS: 26.06.00
+- DLPack: installed
+- GPU: NVIDIA GeForce RTX 3070, compute capability 8.6
 
-## Local Detection Results
+Verified installation artifacts:
 
-The following locations were inspected:
+- cuVS headers under the `cuvs` environment
+- cuVS CMake package configuration under the `cuvs` environment
+- `/home/antho/miniforge3/envs/cuvs/lib/libcuvs.so`
+- `/home/antho/miniforge3/envs/cuvs/lib/libcuvs_c.so`
+- all inspected runtime dependencies resolved
 
-- `C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4`
-- `C:\Program Files`
-- `C:\Users\Anthony`
-- environment variables matching `CUDA`, `CUVS`, `RAPIDS`, `CONDA`
+A standalone program using the installed cuVS C API was compiled, linked, and
+run successfully. The repository integration is independently covered by the
+profile-gated correctness and lifecycle tests described below.
 
-Observed environment:
+## Chosen API Direction
 
-- `CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4`
-- `CUDA_PATH_V12_4=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4`
+The adapter uses the installed cuVS 26.06.00 C API surface validated by the
+direct probe and recorded in this document. Do not substitute remembered APIs
+from another cuVS release.
 
-Searches performed:
+Selected header and functions:
 
-- `cuvs-config.cmake`
-- `cuvs*.dll`
-- `cuvs*.lib`
-- `libcuvs*`
-- `cuvs*.h`
-- `cuvs*.hpp`
-- `raft*` under the CUDA toolkit tree
+- `<cuvs/neighbors/brute_force.h>`
+- `cuvsResourcesCreate`, `cuvsResourcesDestroy`, and `cuvsStreamSync`
+- `cuvsBruteForceIndexCreate` and `cuvsBruteForceIndexDestroy`
+- `cuvsBruteForceBuild` and `cuvsBruteForceSearch`
+- `cuvsRMMAlloc` and `cuvsRMMFree`
+- `cuvsGetLastErrorText` for failure details
 
-Detected cuVS version:
+Explicit metric mapping:
 
-- none
+- `EUCLIDEAN` -> `L2Expanded`
+- `COSINE` -> `CosineExpanded`, converted from distance to similarity with
+  `1.0f - distance`
+- `DOT_PRODUCT` -> `InnerProduct`
 
-Detected headers:
-
-- none
-
-Detected libraries:
-
-- none
-
-Detected CMake package files:
-
-- none
-
-Detected examples or documentation:
-
-- none
-
-## Chosen API
-
-No cuVS C or C++ API was chosen because no local cuVS installation was found and therefore no installed API surface could be verified.
-
-The future implementation must begin by inspecting the installed headers and examples for the exact version present on the target machine.
+The selected index is exact brute-force search, so Recall@k is not applicable;
+tests compare ordered IDs and scores directly with `CpuBruteForceIndex`.
 
 ## Current Build Scaffolding
 
@@ -71,46 +71,45 @@ The repository now exposes:
 - Maven profile: `-Pcuvs`
 - CMake flag: `VECTORFORGE_ENABLE_CUVS`
 
-Current behavior when `VECTORFORGE_ENABLE_CUVS=ON` is requested:
+Current repository behavior when `VECTORFORGE_ENABLE_CUVS=ON` is requested:
 
-- the native build stops immediately with a clear error directing the user to this plan document
+- CMake requires the verified `cuvs` C API package and links `cuvs::c_api`
+  plus `CUDA::cudart`
+- the isolated `native_cuvs_index.cpp` adapter is compiled
+- the Java `CuvsVectorIndex` and opt-in correctness tests are enabled
 
-This is intentional. It prevents the build from implying that cuVS integration exists when no verified local SDK is present.
+## Build Validation
 
-## Planned Integration Steps Once cuVS Is Installed
+- Default full reactor: `mvn clean verify` passed.
+- Native profile: `mvn -Pnative clean verify` passed, including 5/5 native
+  tests. The WSL portability pass replaces the Windows-only generator
+  assumption with a Linux Ninja path; preserve the Windows MinGW behavior.
+- CUDA profile: `mvn -Pcuda verify` passed after a clean configure/build,
+  including CPU 9/9, native 5/5, and GPU 4/4 tests on the RTX 3070.
+- cuVS profile: `mvn -Pcuvs clean verify` passed against cuVS 26.06.00:
+  CPU 9/9, native 5/5, custom CUDA 4/4, and cuVS 5/5.
+- Windows native profile: `mvn -Pnative clean verify` passed, including 5/5
+  native tests.
 
-1. Detect and record the exact cuVS version from the installed package metadata, headers, or CMake config files.
-2. Inspect the installed headers, examples, and docs to select one supported index type.
-3. Choose the smallest viable native adapter surface:
-   - create index
-   - build or train if required
-   - search batch
-   - destroy
-4. Keep the cuVS-specific code isolated in a dedicated native adapter translation unit.
-5. Reuse the existing opaque-handle JNI registry and exception translation path.
-6. Add a Java `CuvsVectorIndex` only after the native entry points and supported metric mapping are verified from the installed API.
-7. Add correctness tests against `CpuBruteForceIndex`.
-8. If the selected cuVS index is approximate, add Recall@k tests against exact CPU results.
-9. Extend the demo to compare:
-   - CPU Java
-   - custom CUDA
-   - cuVS
+## Next Implementation Steps
 
-## Required Inputs Before Real Integration
+1. Preserve the passing default, native, CUDA, and cuVS profile matrix.
+2. Consider larger JMH-quality comparisons with forks, longer warmups, and
+   confidence intervals before making performance claims.
+3. Consider additional cuVS index families only after inspecting their exact
+   installed APIs and adding Recall@k coverage where search is approximate.
 
-To proceed beyond scaffolding, the machine needs a locally installed cuVS distribution that provides at least:
+## Required Inputs
 
-- headers
-- import libraries or shared libraries
-- package metadata or CMake config files
-- examples or docs sufficient to verify the intended API
+The formerly missing local inputs are now present: headers, shared libraries,
+package/CMake metadata, DLPack, CUDA 12.9, and a successful direct C API probe.
+The adapter now uses the installed `cuvs::c_api` target, device-resident
+DLPack tensors, metric-specific brute-force indexes, and the existing JNI
+handle registry.
 
 ## Unsupported Functionality In The Current State
 
-- `CuvsVectorIndex` Java implementation
-- cuVS JNI entry points
-- cuVS native adapter
-- cuVS correctness tests
-- cuVS recall tests
-- cuVS demo path
-- cuVS benchmark claims
+- approximate cuVS index families
+- persistence and serialization of cuVS indexes
+- generalized performance claims from the short smoke comparison
+- Windows cuVS builds; the verified cuVS environment is Ubuntu under WSL2

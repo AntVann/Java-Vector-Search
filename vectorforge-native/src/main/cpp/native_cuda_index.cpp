@@ -4,7 +4,12 @@
 
 #include <cuda.h>
 #include <nvrtc.h>
+
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
 
 #include <chrono>
 #include <filesystem>
@@ -40,15 +45,27 @@ using CuEventDestroyFn = CUresult(CUDAAPI*)(CUevent);
 using CuGetErrorNameFn = CUresult(CUDAAPI*)(CUresult, const char**);
 using CuGetErrorStringFn = CUresult(CUDAAPI*)(CUresult, const char**);
 
-using NvrtcVersionFn = nvrtcResult(__cdecl*)(int*, int*);
-using NvrtcCreateProgramFn = nvrtcResult(__cdecl*)(nvrtcProgram*, const char*, const char*, int, const char* const*, const char* const*);
-using NvrtcCompileProgramFn = nvrtcResult(__cdecl*)(nvrtcProgram, int, const char* const*);
-using NvrtcGetProgramLogSizeFn = nvrtcResult(__cdecl*)(nvrtcProgram, std::size_t*);
-using NvrtcGetProgramLogFn = nvrtcResult(__cdecl*)(nvrtcProgram, char*);
-using NvrtcGetPTXSizeFn = nvrtcResult(__cdecl*)(nvrtcProgram, std::size_t*);
-using NvrtcGetPTXFn = nvrtcResult(__cdecl*)(nvrtcProgram, char*);
-using NvrtcDestroyProgramFn = nvrtcResult(__cdecl*)(nvrtcProgram*);
-using NvrtcGetErrorStringFn = const char*(__cdecl*)(nvrtcResult);
+#ifdef _WIN32
+#define VECTORFORGE_NVRTC_CALL __cdecl
+#else
+#define VECTORFORGE_NVRTC_CALL
+#endif
+
+using NvrtcVersionFn = nvrtcResult(VECTORFORGE_NVRTC_CALL*)(int*, int*);
+using NvrtcCreateProgramFn = nvrtcResult(VECTORFORGE_NVRTC_CALL*)(nvrtcProgram*, const char*, const char*, int, const char* const*, const char* const*);
+using NvrtcCompileProgramFn = nvrtcResult(VECTORFORGE_NVRTC_CALL*)(nvrtcProgram, int, const char* const*);
+using NvrtcGetProgramLogSizeFn = nvrtcResult(VECTORFORGE_NVRTC_CALL*)(nvrtcProgram, std::size_t*);
+using NvrtcGetProgramLogFn = nvrtcResult(VECTORFORGE_NVRTC_CALL*)(nvrtcProgram, char*);
+using NvrtcGetPTXSizeFn = nvrtcResult(VECTORFORGE_NVRTC_CALL*)(nvrtcProgram, std::size_t*);
+using NvrtcGetPTXFn = nvrtcResult(VECTORFORGE_NVRTC_CALL*)(nvrtcProgram, char*);
+using NvrtcDestroyProgramFn = nvrtcResult(VECTORFORGE_NVRTC_CALL*)(nvrtcProgram*);
+using NvrtcGetErrorStringFn = const char*(VECTORFORGE_NVRTC_CALL*)(nvrtcResult);
+
+#ifdef _WIN32
+using DynamicLibraryHandle = HMODULE;
+#else
+using DynamicLibraryHandle = void*;
+#endif
 
 class CudaException final : public std::runtime_error {
 public:
@@ -57,11 +74,34 @@ public:
     }
 };
 
+void* resolve_symbol(DynamicLibraryHandle library, const char* symbol_name) {
+#ifdef _WIN32
+    return reinterpret_cast<void*>(GetProcAddress(library, symbol_name));
+#else
+    dlerror();
+    return dlsym(library, symbol_name);
+#endif
+}
+
+DynamicLibraryHandle load_dynamic_library(const char* library_name) {
+#ifdef _WIN32
+    return LoadLibraryA(library_name);
+#else
+    return dlopen(library_name, RTLD_NOW | RTLD_LOCAL);
+#endif
+}
+
 template <typename Fn>
-Fn require_symbol(HMODULE library, const char* symbol_name) {
-    auto raw = reinterpret_cast<Fn>(GetProcAddress(library, symbol_name));
+Fn require_symbol(DynamicLibraryHandle library, const char* symbol_name) {
+    auto raw = reinterpret_cast<Fn>(resolve_symbol(library, symbol_name));
     if (raw == nullptr) {
-        throw CudaException(std::string("Unable to resolve CUDA symbol: ") + symbol_name);
+        std::string message = std::string("Unable to resolve CUDA symbol: ") + symbol_name;
+#ifndef _WIN32
+        if (const char* detail = dlerror()) {
+            message += std::string(" (") + detail + ")";
+        }
+#endif
+        throw CudaException(message);
     }
     return raw;
 }
@@ -91,11 +131,11 @@ public:
         return description != nullptr ? description : "NVRTC error";
     }
 
-    HMODULE cuda_library() const noexcept {
+    DynamicLibraryHandle cuda_library() const noexcept {
         return cuda_library_;
     }
 
-    HMODULE nvrtc_library() const noexcept {
+    DynamicLibraryHandle nvrtc_library() const noexcept {
         return nvrtc_library_;
     }
 
@@ -170,15 +210,28 @@ private:
         nvrtc_get_error_string_ = require_symbol<NvrtcGetErrorStringFn>(nvrtc_library_, "nvrtcGetErrorString");
     }
 
-    static HMODULE load_cuda_driver_library() {
-        HMODULE library = LoadLibraryA("nvcuda.dll");
+    static DynamicLibraryHandle load_cuda_driver_library() {
+#ifdef _WIN32
+        const char* library_name = "nvcuda.dll";
+#else
+        const char* library_name = "libcuda.so.1";
+#endif
+        DynamicLibraryHandle library = load_dynamic_library(library_name);
         if (library == nullptr) {
-            throw CudaException("Unable to load nvcuda.dll. Install an NVIDIA driver to use the CUDA backend.");
+            std::string message = std::string("Unable to load ") + library_name
+                    + ". Install an NVIDIA driver to use the CUDA backend.";
+#ifndef _WIN32
+            if (const char* detail = dlerror()) {
+                message += std::string(" Loader error: ") + detail;
+            }
+#endif
+            throw CudaException(message);
         }
         return library;
     }
 
-    static HMODULE load_nvrtc_library() {
+    static DynamicLibraryHandle load_nvrtc_library() {
+#ifdef _WIN32
         std::vector<std::string> candidates{
                 "nvrtc64_120_0.dll",
                 "nvrtc64_122_0.dll",
@@ -200,19 +253,31 @@ private:
                 }
             }
         }
+#else
+        std::vector<std::string> candidates{
+                "libnvrtc.so",
+                "libnvrtc.so.12"
+        };
+#endif
 
         for (const std::string& candidate : candidates) {
-            HMODULE library = LoadLibraryA(candidate.c_str());
+            DynamicLibraryHandle library = load_dynamic_library(candidate.c_str());
             if (library != nullptr) {
                 return library;
             }
         }
 
-        throw CudaException("Unable to load an NVRTC DLL. Ensure the CUDA toolkit is installed and on PATH.");
+        std::string message = "Unable to load NVRTC. Ensure the CUDA toolkit is installed and on the library path.";
+#ifndef _WIN32
+        if (const char* detail = dlerror()) {
+            message += std::string(" Loader error: ") + detail;
+        }
+#endif
+        throw CudaException(message);
     }
 
-    HMODULE cuda_library_;
-    HMODULE nvrtc_library_;
+    DynamicLibraryHandle cuda_library_;
+    DynamicLibraryHandle nvrtc_library_;
 };
 
 struct ConstructionCleanup final {

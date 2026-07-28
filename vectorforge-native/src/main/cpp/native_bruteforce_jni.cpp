@@ -294,6 +294,32 @@ Java_com_vectorforge_nativeindex_NativeBindings_nativeCreateCudaIndex(
     }
 }
 
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_vectorforge_nativeindex_NativeBindings_nativeCreateCuvsIndex(
+        JNIEnv* env,
+        jclass,
+        jobject vectors_buffer,
+        jobject ids_buffer,
+        jint vector_count,
+        jint dimensions
+) {
+    try {
+        return create_index_common(
+                env,
+                vectors_buffer,
+                ids_buffer,
+                vector_count,
+                dimensions,
+                [](std::vector<float> vectors, std::vector<jlong> ids, std::int32_t dims) {
+                    return vectorforge::create_cuvs_index(std::move(vectors), std::move(ids), dims);
+                }
+        );
+    } catch (const std::exception& ex) {
+        translate_exception(env, ex);
+        return 0L;
+    }
+}
+
 extern "C" JNIEXPORT void JNICALL
 Java_com_vectorforge_nativeindex_NativeBindings_nativeSearch(
         JNIEnv* env,
@@ -390,5 +416,27 @@ Java_com_vectorforge_nativeindex_NativeBindings_nativeGetCudaDeviceCount(
     } catch (const std::exception& ex) {
         translate_exception(env, ex);
         return 0;
+    }
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_vectorforge_nativeindex_NativeBindings_nativeIsCuvsCompiled(
+        JNIEnv*,
+        jclass
+) {
+    return vectorforge::cuvs_backend_compiled() ? JNI_TRUE : JNI_FALSE;
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_vectorforge_nativeindex_NativeBindings_nativeGetCuvsVersion(
+        JNIEnv* env,
+        jclass
+) {
+    try {
+        const std::string version = vectorforge::cuvs_version();
+        return env->NewStringUTF(version.c_str());
+    } catch (const std::exception& ex) {
+        translate_exception(env, ex);
+        return nullptr;
     }
 }

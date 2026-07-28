@@ -193,4 +193,14 @@ std::shared_ptr<NativeIndex> create_cuda_index(
         std::int32_t dimensions
 );
 
+bool cuvs_backend_compiled() noexcept;
+
+std::string cuvs_version();
+
+std::shared_ptr<NativeIndex> create_cuvs_index(
+        std::vector<float> vectors,
+        std::vector<jlong> ids,
+        std::int32_t dimensions
+);
+
 } // namespace vectorforge
