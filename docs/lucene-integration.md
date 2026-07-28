@@ -17,9 +17,10 @@ Each document contains:
 | `vectorforge_id` | stored numeric field | stable mapping to a VectorForge result ID |
 | `vectorforge_vector` | stored binary field | rebuild input for the external index |
 
-`LuceneVectorAdapter` owns a Lucene writer, near-real-time reader, and a supplied
-`VectorIndex`. Adds, updates, and deletes enter Lucene first. `refreshAndRebuild()` opens a new
-reader, walks only live stored documents, and replaces the VectorForge index and ID mapping.
+`LuceneVectorAdapter` owns a Lucene writer, near-real-time reader, and a factory for creating
+`VectorIndex` snapshots. Adds, updates, and deletes enter Lucene first. `refreshAndRebuild()` opens
+a new reader, walks only live stored documents, builds a fresh backend, and atomically replaces
+the published VectorForge index and ID mapping only after the build succeeds.
 Lucene internal document numbers are never used as durable identifiers because they change
 across segments and merges.
 
@@ -55,7 +56,8 @@ latency separately from complete adapter latency.
 - Writes are not visible to either search path until `refreshAndRebuild()`.
 - A refresh creates one consistent live-document snapshot for Lucene and VectorForge.
 - Deletes remain visible in the previous snapshot until refresh, then disappear from both.
-- Updates are delete-plus-add operations and receive a new VectorForge ID.
+- External IDs are unique within the adapter. Duplicate `add()` calls are rejected.
+- Updates use Lucene's atomic `updateDocument` operation and receive a new VectorForge ID.
 - The mapping does not rely on Lucene segment-local document IDs, so segment merges do not break
   it. Rebuild cost is still proportional to all live documents.
 - Stored vector copies increase index size and are required by this simple rebuild design.
@@ -63,7 +65,9 @@ latency separately from complete adapter latency.
   use a persistent, collision-free ID allocator.
 - Concurrent writes/searches, incremental segment rebuilds, merge callbacks, crash recovery,
   multi-valued metadata, and pre-search VectorForge filtering are outside the current adapter.
-- Dot-product inputs must obey Lucene's vector magnitude requirements. The demo and tests use
-  Euclidean distance.
+- Dot-product indexed and query vectors are required to have unit length; the adapter validates
+  this constraint. The demo uses Euclidean distance.
 - Exact CPU results and Lucene's HNSW results can differ on larger datasets because Lucene vector
   search may be approximate.
+- Equal-score ties may use different secondary ordering. Direct ordering comparisons are valid
+  only when the compared scores are not tied.

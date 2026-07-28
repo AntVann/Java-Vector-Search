@@ -28,7 +28,7 @@ public final class LuceneVectorDemo {
         float[] query = {1.0f, 0.0f, 0.0f};
 
         try (LuceneVectorAdapter adapter = new LuceneVectorAdapter(
-                3, DistanceMetric.EUCLIDEAN, new CpuBruteForceIndex())) {
+                3, DistanceMetric.EUCLIDEAN, CpuBruteForceIndex::new)) {
             for (LuceneVectorDocument document : documents) {
                 long vectorId = adapter.add(document);
                 System.out.printf("indexed vectorId=%d externalId=%s%n", vectorId, document.externalId());

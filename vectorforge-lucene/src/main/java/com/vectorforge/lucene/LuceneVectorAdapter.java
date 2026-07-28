@@ -33,10 +33,13 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Supplier;
 
 /**
  * Standalone adapter that keeps Lucene documents and a VectorForge index in sync at explicit
@@ -53,24 +56,31 @@ public final class LuceneVectorAdapter implements AutoCloseable {
 
     private final int dimensions;
     private final DistanceMetric metric;
-    private final VectorIndex vectorIndex;
+    private final Supplier<? extends VectorIndex> vectorIndexFactory;
     private final Directory directory;
     private final Analyzer analyzer;
     private final IndexWriter writer;
     private final Map<Long, SnapshotDocument> documentsByVectorId = new LinkedHashMap<>();
+    private final Set<String> externalIds = new HashSet<>();
     private long nextVectorId = 1L;
+    private VectorIndex vectorIndex;
     private DirectoryReader reader;
     private IndexSearcher searcher;
     private boolean vectorIndexBuilt;
     private boolean closed;
 
-    public LuceneVectorAdapter(int dimensions, DistanceMetric metric, VectorIndex vectorIndex) throws IOException {
+    public LuceneVectorAdapter(
+            int dimensions,
+            DistanceMetric metric,
+            Supplier<? extends VectorIndex> vectorIndexFactory
+    ) throws IOException {
         if (dimensions <= 0) {
             throw new IllegalArgumentException("dimensions must be positive");
         }
         this.dimensions = dimensions;
         this.metric = Objects.requireNonNull(metric, "metric must not be null");
-        this.vectorIndex = Objects.requireNonNull(vectorIndex, "vectorIndex must not be null");
+        this.vectorIndexFactory = Objects.requireNonNull(
+                vectorIndexFactory, "vectorIndexFactory must not be null");
         this.directory = new ByteBuffersDirectory();
         this.analyzer = new StandardAnalyzer();
         this.writer = new IndexWriter(directory, new IndexWriterConfig(analyzer));
@@ -84,8 +94,12 @@ public final class LuceneVectorAdapter implements AutoCloseable {
         ensureOpen();
         Objects.requireNonNull(input, "input must not be null");
         validateVector(input.vector());
+        if (externalIds.contains(input.externalId())) {
+            throw new IllegalArgumentException("externalId already exists: " + input.externalId());
+        }
         long vectorId = nextVectorId++;
         writer.addDocument(toDocument(input, vectorId));
+        externalIds.add(input.externalId());
         return vectorId;
     }
 
@@ -96,9 +110,10 @@ public final class LuceneVectorAdapter implements AutoCloseable {
         ensureOpen();
         Objects.requireNonNull(input, "input must not be null");
         validateVector(input.vector());
-        writer.deleteDocuments(new Term(EXTERNAL_ID_FIELD, input.externalId()));
         long vectorId = nextVectorId++;
-        writer.addDocument(toDocument(input, vectorId));
+        Document replacement = toDocument(input, vectorId);
+        writer.updateDocument(new Term(EXTERNAL_ID_FIELD, input.externalId()), replacement);
+        externalIds.add(input.externalId());
         return vectorId;
     }
 
@@ -108,6 +123,7 @@ public final class LuceneVectorAdapter implements AutoCloseable {
             throw new IllegalArgumentException("externalId must not be blank");
         }
         writer.deleteDocuments(new Term(EXTERNAL_ID_FIELD, externalId));
+        externalIds.remove(externalId);
     }
 
     /**
@@ -121,6 +137,7 @@ public final class LuceneVectorAdapter implements AutoCloseable {
         Map<Long, SnapshotDocument> snapshot = new LinkedHashMap<>();
         List<float[]> vectors = new ArrayList<>();
         List<Long> ids = new ArrayList<>();
+        VectorIndex newVectorIndex = null;
         try {
             Bits liveDocs = MultiBits.getLiveDocs(newReader);
             for (int docId = 0; docId < newReader.maxDoc(); docId++) {
@@ -140,22 +157,61 @@ public final class LuceneVectorAdapter implements AutoCloseable {
                 vectors.add(vector);
                 ids.add(vectorId);
             }
+            newVectorIndex = Objects.requireNonNull(
+                    vectorIndexFactory.get(), "vectorIndexFactory returned null");
             if (!vectors.isEmpty()) {
-                vectorIndex.build(vectors.toArray(float[][]::new), ids.stream().mapToLong(Long::longValue).toArray());
+                newVectorIndex.build(
+                        vectors.toArray(float[][]::new),
+                        ids.stream().mapToLong(Long::longValue).toArray()
+                );
             }
         } catch (RuntimeException | IOException error) {
-            newReader.close();
+            try {
+                newReader.close();
+            } catch (IOException closeError) {
+                error.addSuppressed(closeError);
+            }
+            if (newVectorIndex != null) {
+                try {
+                    newVectorIndex.close();
+                } catch (RuntimeException closeError) {
+                    error.addSuppressed(closeError);
+                }
+            }
             throw error;
         }
 
         DirectoryReader oldReader = reader;
+        VectorIndex oldVectorIndex = vectorIndex;
         reader = newReader;
         searcher = newSearcher;
+        vectorIndex = newVectorIndex;
         vectorIndexBuilt = !vectors.isEmpty();
         documentsByVectorId.clear();
         documentsByVectorId.putAll(snapshot);
+        externalIds.clear();
+        snapshot.values().forEach(document -> externalIds.add(document.externalId()));
+        IOException cleanupFailure = null;
         if (oldReader != null) {
-            oldReader.close();
+            try {
+                oldReader.close();
+            } catch (IOException error) {
+                cleanupFailure = error;
+            }
+        }
+        if (oldVectorIndex != null) {
+            try {
+                oldVectorIndex.close();
+            } catch (RuntimeException error) {
+                if (cleanupFailure == null) {
+                    cleanupFailure = new IOException("failed to close previous VectorForge index", error);
+                } else {
+                    cleanupFailure.addSuppressed(error);
+                }
+            }
+        }
+        if (cleanupFailure != null) {
+            throw cleanupFailure;
         }
         return snapshot.size();
     }
@@ -260,6 +316,15 @@ public final class LuceneVectorAdapter implements AutoCloseable {
                 throw new IllegalArgumentException("vectors must contain only finite values");
             }
         }
+        if (metric == DistanceMetric.DOT_PRODUCT) {
+            double squaredMagnitude = 0.0;
+            for (float value : vector) {
+                squaredMagnitude += (double) value * value;
+            }
+            if (Math.abs(squaredMagnitude - 1.0) > 1.0e-5) {
+                throw new IllegalArgumentException("dot-product vectors must have unit length");
+            }
+        }
     }
 
     private void ensureOpen() {
@@ -319,12 +384,23 @@ public final class LuceneVectorAdapter implements AutoCloseable {
         }
         try {
             analyzer.close();
+        } catch (RuntimeException error) {
+            if (failure == null) failure = new IOException("failed to close analyzer", error);
+            else failure.addSuppressed(error);
+        }
+        try {
             directory.close();
         } catch (IOException error) {
             if (failure == null) failure = error;
             else failure.addSuppressed(error);
-        } finally {
-            vectorIndex.close();
+        }
+        try {
+            if (vectorIndex != null) {
+                vectorIndex.close();
+            }
+        } catch (RuntimeException error) {
+            if (failure == null) failure = new IOException("failed to close VectorForge index", error);
+            else failure.addSuppressed(error);
         }
         if (failure != null) {
             throw failure;
