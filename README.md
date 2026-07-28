@@ -26,7 +26,7 @@ flowchart LR
     GpuJava --> NativeCpp
     NativeCpp --> GPU["CUDA Driver + NVRTC Kernel"]
     NativeCpp --> CUVS["cuVS 26.06 C API"]
-    Lucene["vectorforge-lucene (planned)"] --> API
+    Lucene["vectorforge-lucene adapter"] --> API
 ```
 
 ## Supported Backends
@@ -140,6 +140,11 @@ Or use the helper script:
 ```powershell
 ./scripts/run-demo.ps1
 ```
+
+The standalone Lucene integration is documented in
+[`docs/lucene-integration.md`](docs/lucene-integration.md). Its CPU-only demo uses Lucene public
+APIs, rebuilds VectorForge from live documents at an explicit refresh boundary, and compares
+VectorForge results with Lucene's built-in vector search.
 
 ## Benchmark Methodology
 
