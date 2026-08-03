@@ -87,8 +87,6 @@ memory observations, latency percentiles, and Recall@k where applicable.
 | cuVS brute-force search | Experimental | Verified with cuVS 26.06 on Linux/WSL2 |
 | Lucene adapter | Experimental | Standalone adapter; no Lucene-internal integration |
 | Disk-backed IVF | Experimental | Immutable research prototype, not a database engine |
-| Approximate in-memory ANN | Planned | No production ANN index is implemented |
-| Production persistence/replication | Planned | Not implemented |
 
 ## Repository Layout
 
@@ -219,75 +217,32 @@ For reproducible end-to-end CPU/custom-CUDA/cuVS runs with JSON Lines output, pr
 
 ## Results
 
-Only measurements already recorded by the repository are included here. They
-span two documented environments: a Windows 11 Ryzen 9 3900X desktop with an
-RTX 3070 for the CPU JMH and CUDA profile results, and a WSL2 Intel i7-11800H
-laptop with an RTX 3070 Laptop GPU for the checked end-to-end artifact. See
-[benchmark methodology](docs/benchmark-methodology.md) and the retained
-[smoke summary](benchmark-results/sample-smoke.md) for versions, commands, raw
-samples, and caveats.
+The following comparison is from one actual WSL2 run on an Intel Core
+i7-11800H. It used OpenJDK 21.0.10, CUDA 12.9, cuVS 26.6.0, 10 warm-up
+iterations, 20 measured iterations, and fixed seed `20260728`. Every backend
+searched the same 10,000-vector, 128-dimensional dataset with batch size 1,
+`k=10`, and dot product.
 
-These commands were re-run successfully in the current review pass:
+| Backend | Build ms | Batch avg ms | p50 ms | p95 ms | p99 ms | QPS | Recall@10 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| Java CPU | 7.902 | 1.135 | 1.095 | 1.390 | 1.419 | 880.733 | 1.000000 |
+| Native C++ CPU | 19.660 | 0.853 | 0.832 | 0.976 | 1.074 | 1171.794 | 1.000000 |
+| Custom CUDA | 962.793 | 0.161 | 0.141 | 0.211 | 0.326 | 6199.386 | 1.000000 |
+| cuVS | 111.005 | 0.324 | 0.306 | 0.455 | 0.471 | 3087.717 | 1.000000 |
 
-- `mvn clean verify`
-- `mvn clean verify -Pcuda`
+For the custom CUDA backend, average measured phases were 0.006 ms host to
+device, 0.035 ms kernel, and 0.037 ms device to host. The other backends do not
+expose comparable phase timing through this harness.
 
-Available JMH benchmark:
-
-- `CpuBruteForceSearchBenchmark.searchTopK`
-
-Observed CPU JMH result:
-
-| Benchmark | Params | Result |
-| --- | --- | --- |
-| `CpuBruteForceSearchBenchmark.searchTopK` | `dimensions=128`, `k=10`, `vectorCount=10000` | `930.850 +- 10.293 us/op` |
-
-Reference command:
-
-```powershell
-java -jar vectorforge-benchmarks/target/vectorforge-benchmarks.jar com.vectorforge.benchmarks.CpuBruteForceSearchBenchmark.searchTopK -wi 3 -i 5 -f 1
-```
-
-Verified CUDA profile harness commands:
-
-```powershell
-java -Dvectorforge.native.library.dir=vectorforge-native/target/native-lib -cp vectorforge-benchmarks/target/vectorforge-benchmarks.jar com.vectorforge.benchmarks.CudaBackendProfileRunner --vectors 10000 --dimensions 128 --k 10 --warmup 30 --iterations 120 --small-queries 1 --batch-queries 32
-java -Dvectorforge.native.library.dir=vectorforge-native/target/native-lib -cp vectorforge-benchmarks/target/vectorforge-benchmarks.jar com.vectorforge.benchmarks.CudaBackendProfileRunner --vectors 50000 --dimensions 384 --k 10 --warmup 10 --iterations 20 --small-queries 1 --batch-queries 16
-```
-
-Representative current CUDA profile results:
-
-| Dataset | Path | Scenario | End-to-end avg | Kernel avg | Native total avg |
-| --- | --- | --- | --- | --- | --- |
-| `10000 x 128` | `high_level` | `single` | `191.667 us` | `0.018 ms` | `0.153 ms` |
-| `10000 x 128` | `high_level` | `batch x32` | `1050.008 us` | `0.109 ms` | `0.958 ms` |
-| `50000 x 384` | `high_level` | `single` | `504.095 us` | `0.202 ms` | `0.438 ms` |
-| `50000 x 384` | `high_level` | `batch x16` | `6516.940 us` | `4.788 ms` | `6.343 ms` |
-
-Verified end-to-end demo scenario:
-
-```powershell
-java -jar vectorforge-demo/target/vectorforge-demo.jar --backend cpu --vectors 100000 --dimensions 384 --queries 100 --k 10 --metric dot_product
-java -Dvectorforge.native.library.dir=vectorforge-native/target/native-lib -jar vectorforge-demo/target/vectorforge-demo.jar --backend native --vectors 100000 --dimensions 384 --queries 100 --k 10 --metric dot_product
-java -Dvectorforge.native.library.dir=vectorforge-native/target/native-lib -jar vectorforge-demo/target/vectorforge-demo.jar --backend cuda --vectors 100000 --dimensions 384 --queries 100 --k 10 --metric dot_product
-```
-
-Observed results:
-
-| Backend | `build_ms` | `search_ms` | `avg_query_us` |
-| --- | --- | --- | --- |
-| `cpu` | `88.015` | `3043.580` | `30435.804` |
-| `native` | `154.011` | `2930.033` | `29300.326` |
-| `cuda` | `477.857` | `101.818` | `1018.183` |
-
-Observed CUDA phase timings for that run:
-
-| Metric | Value |
-| --- | --- |
-| `cuda_h2d_ms` | `0.052` |
-| `cuda_kernel_ms` | `76.459` |
-| `cuda_d2h_ms` | `6.267` |
-| `cuda_total_ms` | `98.155` |
+These are local smoke-workload observations, not general performance claims.
+Backends ran sequentially in one JVM and percentile values are order statistics
+from 20 samples. Build time was measured separately from queries; QPS comes
+from summed end-to-end batch time; Recall@k is ID-set overlap against the Java
+CPU ground truth. See the checked-in
+[JSON Lines artifact](benchmark-results/wsl2-intel-comparison.jsonl),
+[generated summary](benchmark-results/wsl2-intel-comparison.md), and
+[benchmark methodology](docs/benchmark-methodology.md) for raw samples,
+environment details, and limitations.
 
 ## Current Limitations
 
@@ -329,9 +284,3 @@ Observed CUDA phase timings for that run:
   adapter behavior is stable; no deep segment or merge integration exists.
 - Treat disk locking as advisory. Distributed coordination, replication,
   compaction, and database-grade crash consistency are not implemented.
-
-## Project Status
-
-This repository is interview-ready research software, not a production service.
-See [docs/limitations.md](docs/limitations.md) for unsupported functionality and
-[CONTRIBUTING.md](CONTRIBUTING.md) for the required verification matrix.
