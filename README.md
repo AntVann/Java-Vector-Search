@@ -1,34 +1,81 @@
 # VectorForge
 
-VectorForge is a Java-first vector search project built to compare exact nearest-neighbor search across a pure JVM baseline, a custom CUDA path, and an NVIDIA cuVS-backed implementation. The repository provides a CPU baseline, a JNI-backed native reference backend, an educational exact CUDA backend, and an optional exact cuVS brute-force backend.
+VectorForge explores a practical systems question: how should a Java application
+perform vector similarity search when the data path may span the JVM, native
+code, GPU memory, and disk? It implements the same exact-search contract across
+a pure Java baseline, JNI/C++, a custom CUDA kernel, and NVIDIA cuVS, then checks
+each optional backend against the Java reference.
 
-## Motivation
+Java matters because it is common in search and data platforms, but JNI calls,
+buffer packing, device transfers, synchronization, and native resource lifetime
+can erase the benefit of GPU execution. VectorForge makes those costs visible
+while preserving a default build that needs only Java 21 and Maven.
 
-The goal is to make JVM, native, and GPU tradeoffs explicit in one repository:
-
-- A correctness-first CPU reference implementation
-- A JNI/native backend that validates handle safety and memory ownership
-- An exact CUDA backend that keeps vectors resident on the GPU
-- A clean Java API that future native and GPU backends can share
-- A project layout that stays runnable on machines without CUDA
-- A foundation for JNI, CUDA, and cuVS work without blocking early development
+The main finding is not simply that a GPU kernel can be fast. The design keeps
+vectors resident and supports query batching, but the measurements also expose
+build cost, transfer cost, host-side top-k, JNI materialization, and complete
+end-to-end latency. All numbers below are machine-specific observations, not
+general performance claims.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Demo["Demo CLI"] --> API["vectorforge-api"]
-    Bench["JMH Benchmarks"] --> API
-    CPU["CpuBruteForceIndex"] --> API
-    NativeJava["NativeBruteForceIndex"] --> API
-    NativeJava --> NativeCpp["JNI + C++17 Library"]
-    GpuJava["CudaBruteForceIndex"] --> API
-    GpuJava --> NativeCpp
-    NativeCpp --> GPU["CUDA Driver + NVRTC Kernel"]
-    NativeCpp --> CUVS["cuVS 26.06 C API"]
-    Lucene["vectorforge-lucene adapter"] --> API
-    Disk["vectorforge-disk experimental IVF"] --> API
+    Client["Demo, Lucene adapter, benchmarks"] --> API["VectorIndex API"]
+    API --> Java["Java CPU exact search"]
+    API --> JNI["JNI adapter and opaque handles"]
+    JNI --> Native["C++ CPU exact search"]
+    JNI --> CUDA["Custom CUDA exact dot product"]
+    JNI --> CUVS["cuVS 26.06 brute force"]
+    API --> Disk["Experimental disk IVF"]
+    Disk --> Rerank["Bounded candidate reranking"]
 ```
+
+The public API owns lifecycle and validation. Java wrappers pack direct buffers
+and pass opaque handles through a small JNI surface. Native objects own copied
+CPU data or GPU allocations through RAII; Java uses explicit `close()` plus a
+last-resort `Cleaner`. CUDA and cuVS are profile-gated, so the CPU-only reactor
+does not require CMake, CUDA, cuVS, or NVIDIA hardware.
+
+## Key Engineering Challenges
+
+### Java/native interoperability
+
+JNI uses direct buffers, explicit capacity checks, structured exceptions, and a
+native handle registry instead of exposing raw pointers to Java. Read/write
+locks prevent rebuild or close from racing an in-flight search, while native
+`shared_ptr` snapshots keep objects alive after handle lookup.
+
+### GPU transfer overhead
+
+The custom CUDA backend uploads indexed vectors once and keeps them resident.
+Queries and the full score matrix still cross the host/device boundary, and
+exact top-k currently runs on the host. Timers therefore report host-to-device,
+kernel, device-to-host, native-total, and Java end-to-end time separately.
+
+### Resource ownership
+
+Java wrappers deterministically destroy native handles through
+try-with-resources. C++ owns CPU memory, CUDA contexts, modules, events, device
+buffers, and cuVS resources through scoped cleanup. A `Cleaner` provides
+best-effort recovery for abandoned Java wrappers, but it is not treated as a
+replacement for explicit close.
+
+### Correctness validation
+
+The Java brute-force implementation is the oracle. Native, CUDA, and cuVS tests
+compare ordered IDs and scores against it using fixed, reproducible inputs. Inputs reject
+duplicate IDs, inconsistent dimensions, invalid counts, and non-finite values.
+The disk prototype also tests corrupt metadata, missing files, partial writes,
+empty partitions, reopening, and concurrent-writer rejection.
+
+### Benchmark design
+
+Index construction is separated from query timing, data generation stays
+outside timed sections, GPU calls synchronize before timers stop, and raw
+machine-readable samples are retained. JMH covers microbenchmarks; separate
+workload runners capture JNI, transfers, synchronization, result conversion,
+memory observations, latency percentiles, and Recall@k where applicable.
 
 ## Supported Backends
 
@@ -170,7 +217,15 @@ The CUDA backend design and timing model are documented in [docs/cuda-backend.md
 
 For reproducible end-to-end CPU/custom-CUDA/cuVS runs with JSON Lines output, presets, system metadata, recall, memory snapshots, raw latency samples, and generated Markdown tables, see [docs/end-to-end-benchmarks.md](docs/end-to-end-benchmarks.md).
 
-## Verified Results
+## Results
+
+Only measurements already recorded by the repository are included here. They
+span two documented environments: a Windows 11 Ryzen 9 3900X desktop with an
+RTX 3070 for the CPU JMH and CUDA profile results, and a WSL2 Intel i7-11800H
+laptop with an RTX 3070 Laptop GPU for the checked end-to-end artifact. See
+[benchmark methodology](docs/benchmark-methodology.md) and the retained
+[smoke summary](benchmark-results/sample-smoke.md) for versions, commands, raw
+samples, and caveats.
 
 These commands were re-run successfully in the current review pass:
 
@@ -236,13 +291,66 @@ Observed CUDA phase timings for that run:
 
 ## Current Limitations
 
-- The shared `VectorIndex` API still exposes only single-query search; batched search is currently an implementation-specific extension on the CPU and native backends
+- The shared API supports scalar and batch search, but optimized batching remains backend-specific
 - The JNI backend currently packs Java arrays into direct buffers per call instead of reusing long-lived off-heap query buffers
 - The CUDA backend currently supports dot-product search only
 - The cuVS build is currently verified only with cuVS 26.06 on Linux/WSL2; Windows-native cuVS packaging is not provided
 - The cuVS adapter uses exact brute-force search and builds one metric-bound cuVS index for each VectorForge metric, increasing device-memory use
 - The CUDA implementation computes the full query-by-vector score matrix on the GPU and performs exact top-k selection on the host, which is correct but not performance-optimal
 - `BackendComparisonRunner` is a small end-to-end smoke profiler, not a substitute for JMH or a controlled cross-machine benchmark
+
+## What I Learned
+
+- GPU acceleration must be evaluated at the application boundary. Kernel time
+  alone excludes data movement, synchronization, JNI, and Java result creation.
+- A stable Java API does not imply identical backend capabilities. Metric
+  support and lifecycle behavior must be explicit and tested as a contract.
+- Native performance work is also ownership work. Exception-safe construction,
+  exactly-once destruction, concurrent close behavior, and loader diagnostics
+  were as important as the search loop.
+- A rejected optimization is useful evidence. Reusing Java-side direct buffers
+  was reverted after the recorded measurements failed to show a stable gain.
+- Optional hardware should stay optional throughout the module graph, build
+  profiles, tests, documentation, and CI—not merely behind a runtime flag.
+
+## Limitations and Future Work
+
+- Move custom-CUDA top-k selection onto the device and avoid copying the full
+  score matrix to the host.
+- Add production-grade approximate in-memory indexes; the current cuVS path is
+  exact brute force and disk IVF remains a research prototype.
+- Run publishable comparisons in isolated JVMs with rotated backend order,
+  additional forks, confidence intervals, and controlled power/thermal state.
+- Provision the documented self-hosted NVIDIA CI runner. Hosted CI currently
+  verifies default and native builds, while real GPU execution is manual.
+- Improve packaging for versioned cuVS/CUDA runtime dependencies without
+  pretending the current Linux/WSL2 environment is portable to native Windows.
+- Extend Lucene integration beyond explicit full rebuilds only after the public
+  adapter behavior is stable; no deep segment or merge integration exists.
+- Treat disk locking as advisory. Distributed coordination, replication,
+  compaction, and database-grade crash consistency are not implemented.
+
+## Interview Highlights
+
+- **Most technically impressive implemented feature:** one Java API spanning
+  pure Java, JNI/C++, custom CUDA, and the verified cuVS 26.06 C API while the
+  default build remains CPU-only.
+- **Strongest benchmark finding:** in the retained three-iteration WSL2 smoke
+  artifact for `10,000 x 128`, batch 1, `k=10`, dot product, measured batch
+  averages were `1.669 ms` for Java CPU, `0.146 ms` for custom CUDA, and
+  `0.445 ms` for cuVS, each with Recall@10 of `1.0` against CPU ground truth.
+  The sample is too small for a generalized performance conclusion.
+- **Most important resource-lifecycle failure mode addressed:** forgotten
+  `close()` calls could retain native/GPU handles. The fix combined an
+  exactly-once guard, explicit-close error semantics, native shared ownership,
+  teardown outside the global mutex, and a nondeterministic Cleaner fallback.
+- **Clearest design tradeoff:** the custom CUDA backend copies the complete
+  score matrix back for host-side exact top-k. That keeps correctness simple and
+  testable but increases transfer volume and limits performance.
+- **Claims to avoid:** production readiness; database-grade durability;
+  distributed scalability; a production ANN implementation; universal GPU or
+  cuVS superiority; Windows-native cuVS support; or scale beyond the documented
+  datasets and hardware.
 
 ## Project Status
 
