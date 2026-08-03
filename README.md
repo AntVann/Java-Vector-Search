@@ -227,13 +227,13 @@ searched the same 10,000-vector, 128-dimensional dataset with batch size 1,
 
 | Backend | Build ms | Batch avg ms | p50 ms | p95 ms | p99 ms | QPS | Recall@10 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| Java CPU | 7.902 | 1.135 | 1.095 | 1.390 | 1.419 | 880.733 | 1.000000 |
-| Native C++ CPU | 19.660 | 0.853 | 0.832 | 0.976 | 1.074 | 1171.794 | 1.000000 |
-| Custom CUDA | 962.793 | 0.161 | 0.141 | 0.211 | 0.326 | 6199.386 | 1.000000 |
-| cuVS | 111.005 | 0.324 | 0.306 | 0.455 | 0.471 | 3087.717 | 1.000000 |
+| Java CPU | 6.922 | 1.105 | 1.031 | 1.371 | 1.402 | 904.880 | 1.000000 |
+| Native C++ CPU | 17.403 | 0.841 | 0.817 | 1.056 | 1.097 | 1188.720 | 1.000000 |
+| Custom CUDA | 1004.236 | 0.267 | 0.228 | 0.413 | 0.454 | 3745.840 | 1.000000 |
+| cuVS | 126.380 | 0.436 | 0.410 | 0.582 | 0.695 | 2292.468 | 1.000000 |
 
-For the custom CUDA backend, average measured phases were 0.006 ms host to
-device, 0.035 ms kernel, and 0.037 ms device to host. The other backends do not
+For the custom CUDA backend, average measured phases were 0.012 ms host to
+device, 0.042 ms kernel, and 0.077 ms device to host. The other backends do not
 expose comparable phase timing through this harness.
 
 These are local smoke-workload observations, not general performance claims.
@@ -255,14 +255,14 @@ reports end-to-end queries per second; higher is better.
 
 | Vectors | Batch | Java CPU | Native C++ CPU | Custom CUDA | cuVS |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 10,000 | 1 | 858.0 | 1,220.8 | 5,861.6 | 2,471.4 |
-| 10,000 | 8 | 1,234.5 | 1,292.0 | 16,024.7 | 24,014.4 |
-| 10,000 | 32 | 1,235.1 | 1,351.5 | 19,357.2 | 62,383.2 |
-| 10,000 | 128 | 1,237.2 | 1,304.0 | 21,934.4 | 106,604.7 |
-| 100,000 | 1 | 115.8 | 114.1 | 1,652.8 | 2,409.1 |
-| 100,000 | 8 | 118.8 | 124.2 | 2,256.7 | 8,120.4 |
-| 100,000 | 32 | 117.5 | 128.1 | 2,469.7 | 23,219.0 |
-| 100,000 | 128 | 117.5 | 126.5 | 2,553.7 | 42,942.8 |
+| 10,000 | 1 | 830.7 | 1,225.3 | 5,851.0 | 2,091.8 |
+| 10,000 | 8 | 1,139.1 | 1,307.6 | 16,999.5 | 25,198.3 |
+| 10,000 | 32 | 1,237.8 | 1,322.4 | 19,170.6 | 73,738.7 |
+| 10,000 | 128 | 1,247.7 | 1,348.5 | 21,987.0 | 102,012.9 |
+| 100,000 | 1 | 115.0 | 122.8 | 1,887.4 | 2,787.9 |
+| 100,000 | 8 | 116.8 | 124.8 | 2,256.8 | 8,082.3 |
+| 100,000 | 32 | 116.5 | 123.7 | 2,414.9 | 19,903.6 |
+| 100,000 | 128 | 117.2 | 123.7 | 2,529.6 | 41,370.5 |
 
 cuVS did not lead the original 10,000-vector, batch-one comparison, but it
 overtook custom CUDA at batches 8, 32, and 128. With 100,000 vectors, cuVS led
@@ -292,7 +292,7 @@ and raw samples.
 ## What I Learned
 
 - **There is no universally best backend.** Java CPU has the lowest dependency
-  and deployment cost and built the 10,000-vector index in 7.9 ms, so it is a
+  and deployment cost and built the 10,000-vector index in 6.9 ms, so it is a
   sensible default for CPU-only environments, small collections, and short-lived
   indexes where GPU startup cannot be amortized. Native C++ produced a modest
   throughput improvement at 10,000 vectors, but at 100,000 vectors its measured
@@ -300,18 +300,18 @@ and raw samples.
   a useful speedup.
 - **Custom CUDA is strongest for small, latency-sensitive dot-product queries in
   the tested configuration.** At 10,000 vectors and batch size 1 it delivered
-  5,861.6 QPS versus cuVS at 2,471.4 QPS. That specialization has costs: the
+  5,851.0 QPS versus cuVS at 2,091.8 QPS. That specialization has costs: the
   custom backend supports only dot product, its first measured build was much
   slower, and its current batch path scales less efficiently than cuVS.
 - **cuVS is the better measured choice as batch size or dataset size grows.** It
   overtook custom CUDA at 10,000 vectors for batches 8, 32, and 128, and led at
   every tested batch size with 100,000 vectors. At 100,000 vectors and batch 128,
-  cuVS reached 42,942.8 QPS versus 2,553.7 for custom CUDA. This supports batching
+  cuVS reached 41,370.5 QPS versus 2,529.6 for custom CUDA. This supports batching
   requests before GPU search when the application can tolerate the queueing
   tradeoff; it is not proof that cuVS wins on every machine or workload.
 - **End-to-end timing changes the story.** In the original custom-CUDA batch-one
-  run, the reported H2D, kernel, and D2H phases totaled about 0.078 ms, while the
-  Java-visible operation took 0.161 ms. The remaining 0.083 ms, about 51%,
+  run, the reported H2D, kernel, and D2H phases totaled about 0.131 ms, while the
+  Java-visible operation took 0.267 ms. The remaining 0.136 ms, about 51%,
   included Java packing, JNI orchestration, host-side exact top-k,
   synchronization and timing overhead, and result conversion. The harness does
   not isolate those costs individually, so kernel timing alone would overstate
