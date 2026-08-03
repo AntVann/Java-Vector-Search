@@ -289,17 +289,44 @@ and raw samples.
 
 ## What I Learned
 
-- GPU acceleration must be evaluated at the application boundary. Kernel time
-  alone excludes data movement, synchronization, JNI, and Java result creation.
-- A stable Java API does not imply identical backend capabilities. Metric
-  support and lifecycle behavior must be explicit and tested as a contract.
-- Native performance work is also ownership work. Exception-safe construction,
-  exactly-once destruction, concurrent close behavior, and loader diagnostics
-  were as important as the search loop.
-- A rejected optimization is useful evidence. Reusing Java-side direct buffers
-  was reverted after the recorded measurements failed to show a stable gain.
-- Optional hardware should stay optional throughout the module graph, build
-  profiles, tests, documentation, and CI—not merely behind a runtime flag.
+- **There is no universally best backend.** Java CPU has the lowest dependency
+  and deployment cost and built the 10,000-vector index in 7.9 ms, so it is a
+  sensible default for CPU-only environments, small collections, and short-lived
+  indexes where GPU startup cannot be amortized. Native C++ produced a modest
+  throughput improvement at 10,000 vectors, but at 100,000 vectors its measured
+  batch-one throughput was roughly equal to Java. JNI alone does not guarantee
+  a useful speedup.
+- **Custom CUDA is strongest for small, latency-sensitive dot-product queries in
+  the tested configuration.** At 10,000 vectors and batch size 1 it delivered
+  5,861.6 QPS versus cuVS at 2,471.4 QPS. That specialization has costs: the
+  custom backend supports only dot product, its first measured build was much
+  slower, and its current batch path scales less efficiently than cuVS.
+- **cuVS is the better measured choice as batch size or dataset size grows.** It
+  overtook custom CUDA at 10,000 vectors for batches 8, 32, and 128, and led at
+  every tested batch size with 100,000 vectors. At 100,000 vectors and batch 128,
+  cuVS reached 42,942.8 QPS versus 2,553.7 for custom CUDA. This supports batching
+  requests before GPU search when the application can tolerate the queueing
+  tradeoff; it is not proof that cuVS wins on every machine or workload.
+- **End-to-end timing changes the story.** In the original custom-CUDA batch-one
+  run, the reported H2D, kernel, and D2H phases totaled about 0.078 ms, while the
+  Java-visible operation took 0.161 ms. The remaining 0.083 ms, about 51%,
+  included Java packing, JNI orchestration, host-side exact top-k,
+  synchronization and timing overhead, and result conversion. The harness does
+  not isolate those costs individually, so kernel timing alone would overstate
+  application performance.
+- **Correctness has to accompany speed.** All 32 scaling combinations achieved
+  Recall@10 of 1.0 against the Java exact-search baseline. Fixed seeds, identical
+  inputs, warm-up, synchronization, and raw samples made performance comparisons
+  useful without weakening validation.
+- **Native performance is also an ownership problem.** Exception-safe
+  construction, exactly-once destruction, concurrent close behavior, and loader
+  diagnostics were as important as the search loop. Optional GPU dependencies
+  also had to remain optional throughout modules, builds, tests, documentation,
+  and CI rather than only behind a runtime flag.
+- **Unsuccessful optimizations are useful evidence.** Reusing Java-side direct
+  buffers was reverted because the recorded measurements did not show a stable
+  improvement. Keeping the simpler implementation was preferable to retaining
+  complexity supported only by an assumption.
 
 ## Limitations and Future Work
 
