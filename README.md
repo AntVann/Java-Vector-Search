@@ -100,7 +100,9 @@ vectorforge/
 ├── vectorforge-gpu/
 ├── vectorforge-benchmarks/
 ├── vectorforge-lucene/
+├── vectorforge-disk/
 ├── vectorforge-demo/
+├── benchmark-results/
 ├── scripts/
 └── docs/
 ```

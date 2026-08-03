@@ -9,7 +9,7 @@
     <packaging>pom</packaging>
 
     <name>VectorForge</name>
-    <description>Java-first vector search system with CPU and planned GPU backends.</description>
+    <description>Java-first vector search system with CPU and optional GPU backends.</description>
 
     <modules>
         <module>vectorforge-api</module>
