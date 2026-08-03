@@ -135,6 +135,33 @@ class LuceneVectorAdapterTest {
     }
 
     @Test
+    void cleanupFailureReportsThatReplacementSnapshotWasPublished() throws Exception {
+        AtomicInteger creations = new AtomicInteger();
+        try (LuceneVectorAdapter adapter = new LuceneVectorAdapter(
+                2,
+                DistanceMetric.EUCLIDEAN,
+                () -> creations.getAndIncrement() == 0
+                        ? new CloseFailingIndex()
+                        : new CpuBruteForceIndex())) {
+            adapter.add(doc("original", 0.0f, 0.0f, "old"));
+            adapter.refreshAndRebuild();
+            adapter.update(doc("original", 5.0f, 0.0f, "new"));
+            adapter.add(doc("second", 6.0f, 0.0f, "new"));
+
+            LuceneRefreshCleanupException error = assertThrows(
+                    LuceneRefreshCleanupException.class, adapter::refreshAndRebuild);
+            assertTrue(error.published());
+            assertEquals(2, error.liveDocumentCount());
+            assertTrue(error.getCause().getMessage().contains("previous VectorForge index"));
+            assertEquals(2, adapter.liveDocumentCount());
+            assertEquals("new",
+                    adapter.search(new float[]{5.0f, 0.0f}, 1, null)
+                            .hits().getFirst().metadata());
+            assertEquals(2, adapter.searchLucene(new float[]{5.0f, 0.0f}, 2, null).size());
+        }
+    }
+
+    @Test
     void deleteAllPublishesEmptyAndReleasesTheOldBackend() throws Exception {
         TrackingIndex.closed = 0;
         try (LuceneVectorAdapter adapter = new LuceneVectorAdapter(
@@ -256,6 +283,31 @@ class LuceneVectorAdapterTest {
         public void close() {
             closed++;
             delegate.close();
+        }
+    }
+
+    private static final class CloseFailingIndex implements VectorIndex {
+        private final CpuBruteForceIndex delegate = new CpuBruteForceIndex();
+
+        @Override
+        public void build(float[][] vectors, long[] ids) {
+            delegate.build(vectors, ids);
+        }
+
+        @Override
+        public List<SearchResult> search(float[] query, int k, SearchParameters parameters) {
+            return delegate.search(query, k, parameters);
+        }
+
+        @Override
+        public IndexMetrics metrics() {
+            return delegate.metrics();
+        }
+
+        @Override
+        public void close() {
+            delegate.close();
+            throw new IllegalStateException("deliberate retired-index cleanup failure");
         }
     }
 }

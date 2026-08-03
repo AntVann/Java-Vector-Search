@@ -2,6 +2,8 @@ package com.vectorforge.nativeindex;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 final class NativeLibraryLoader {
@@ -23,47 +25,77 @@ final class NativeLibraryLoader {
                 return;
             }
 
-            UnsatisfiedLinkError priorFailure = null;
+            List<String> attempts = new ArrayList<>();
+            List<UnsatisfiedLinkError> failures = new ArrayList<>();
 
             String explicitLibrary = System.getProperty("vectorforge.native.library");
             if (explicitLibrary != null && !explicitLibrary.isBlank()) {
+                Path path = Path.of(explicitLibrary).toAbsolutePath();
+                attempts.add("vectorforge.native.library=" + path + " (exists=" + Files.exists(path) + ")");
                 try {
-                    System.load(explicitLibrary);
+                    System.load(path.toString());
                     LOADED.set(true);
                     return;
                 } catch (UnsatisfiedLinkError ex) {
-                    priorFailure = ex;
+                    failures.add(ex);
                 }
             }
 
             String explicitDirectory = System.getProperty("vectorforge.native.library.dir");
             if (explicitDirectory != null && !explicitDirectory.isBlank()) {
-                Path libraryPath = Path.of(explicitDirectory).resolve(System.mapLibraryName(LIBRARY_BASENAME));
-                if (Files.exists(libraryPath)) {
-                    try {
-                        System.load(libraryPath.toAbsolutePath().toString());
-                        LOADED.set(true);
-                        return;
-                    } catch (UnsatisfiedLinkError ex) {
-                        priorFailure = ex;
-                    }
+                Path libraryPath = Path.of(explicitDirectory)
+                        .resolve(System.mapLibraryName(LIBRARY_BASENAME))
+                        .toAbsolutePath();
+                attempts.add("vectorforge.native.library.dir=" + libraryPath
+                        + " (exists=" + Files.exists(libraryPath) + ")");
+                try {
+                    System.load(libraryPath.toString());
+                    LOADED.set(true);
+                    return;
+                } catch (UnsatisfiedLinkError ex) {
+                    failures.add(ex);
                 }
             }
 
+            attempts.add("System.loadLibrary(" + LIBRARY_BASENAME + ")");
             try {
                 System.loadLibrary(LIBRARY_BASENAME);
                 LOADED.set(true);
             } catch (UnsatisfiedLinkError ex) {
-                if (priorFailure != null) {
-                    ex.addSuppressed(priorFailure);
-                }
-                throw new NativeInteropException(
-                        "Unable to load the VectorForge native library. "
-                                + "Set vectorforge.native.library or vectorforge.native.library.dir, "
-                                + "or build the project with the native profile.",
-                        ex
-                );
+                failures.add(ex);
+                throw loadFailure(attempts, failures);
             }
         }
+    }
+
+    static NativeInteropException loadFailure(
+            List<String> attempts,
+            List<UnsatisfiedLinkError> failures
+    ) {
+        if (failures.isEmpty()) {
+            throw new IllegalArgumentException("failures must not be empty");
+        }
+        UnsatisfiedLinkError cause = failures.getLast();
+        NativeInteropException failure = new NativeInteropException(
+                diagnosticMessage(attempts),
+                cause
+        );
+        for (int i = 0; i < failures.size() - 1; i++) {
+            failure.addSuppressed(failures.get(i));
+        }
+        return failure;
+    }
+
+    static String diagnosticMessage(List<String> attempts) {
+        return "Unable to load the VectorForge native library. "
+                + "Attempts: " + String.join("; ", attempts) + ". "
+                + "Runtime: os=" + System.getProperty("os.name")
+                + ", arch=" + System.getProperty("os.arch")
+                + ", java.library.path=" + System.getProperty("java.library.path") + ". "
+                + "Set vectorforge.native.library or vectorforge.native.library.dir, "
+                + "or build with -Pnative/-Pcuda/-Pcuvs. If the JNI file exists, this error "
+                + "usually means a dependent library is missing; configure PATH on Windows "
+                + "or LD_LIBRARY_PATH on Linux. cuVS builds require the matching cuVS, RAPIDS, "
+                + "and CUDA runtime libraries and do not bundle them.";
     }
 }

@@ -327,6 +327,26 @@ struct ConstructionCleanup final {
     }
 };
 
+struct PendingSearchBuffers final {
+    const CudaDriverApi& api;
+    CUdeviceptr queries = 0U;
+    CUdeviceptr scores = 0U;
+
+    ~PendingSearchBuffers() {
+        if (scores != 0U) {
+            (void)api.cu_mem_free_(scores);
+        }
+        if (queries != 0U) {
+            (void)api.cu_mem_free_(queries);
+        }
+    }
+
+    void release() noexcept {
+        queries = 0U;
+        scores = 0U;
+    }
+};
+
 void check_cuda(CUresult result, const char* operation) {
     if (result != CUDA_SUCCESS) {
         throw CudaException(std::string(operation) + " failed: " + CudaDriverApi::instance().format_cuda_error(result));
@@ -630,15 +650,6 @@ private:
             return;
         }
 
-        if (device_queries_ != 0U) {
-            check_cuda(api.cu_mem_free_(device_queries_), "cuMemFree(device queries)");
-            device_queries_ = 0U;
-        }
-        if (device_scores_ != 0U) {
-            check_cuda(api.cu_mem_free_(device_scores_), "cuMemFree(device scores)");
-            device_scores_ = 0U;
-        }
-
         const std::size_t query_bytes = static_cast<std::size_t>(required_bytes(
                 static_cast<std::size_t>(query_count) * static_cast<std::size_t>(dimensions_),
                 sizeof(float),
@@ -650,10 +661,26 @@ private:
                 "device scores"
         ));
 
-        check_cuda(api.cu_mem_alloc_(&device_queries_, query_bytes), "cuMemAlloc(device queries)");
-        check_cuda(api.cu_mem_alloc_(&device_scores_, score_bytes), "cuMemAlloc(device scores)");
-        host_scores_.resize(static_cast<std::size_t>(query_count) * vector_count_);
+        PendingSearchBuffers pending{api};
+        check_cuda(api.cu_mem_alloc_(&pending.queries, query_bytes), "cuMemAlloc(device queries)");
+        check_cuda(api.cu_mem_alloc_(&pending.scores, score_bytes), "cuMemAlloc(device scores)");
+        std::vector<float> new_host_scores(
+                static_cast<std::size_t>(query_count) * vector_count_);
+
+        const CUdeviceptr old_queries = device_queries_;
+        const CUdeviceptr old_scores = device_scores_;
+        device_queries_ = pending.queries;
+        device_scores_ = pending.scores;
+        host_scores_.swap(new_host_scores);
         query_capacity_ = query_count;
+        pending.release();
+
+        if (old_scores != 0U) {
+            (void)api.cu_mem_free_(old_scores);
+        }
+        if (old_queries != 0U) {
+            (void)api.cu_mem_free_(old_queries);
+        }
     }
 
     std::vector<jlong> ids_;

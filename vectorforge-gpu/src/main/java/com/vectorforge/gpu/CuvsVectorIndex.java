@@ -6,6 +6,7 @@ import com.vectorforge.api.SearchParameters;
 import com.vectorforge.api.SearchResult;
 import com.vectorforge.api.VectorIndex;
 import com.vectorforge.nativeindex.NativeBindings;
+import com.vectorforge.nativeindex.NativeHandleGuard;
 
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -24,11 +25,13 @@ public final class CuvsVectorIndex implements VectorIndex {
 
     private static final String BACKEND_NAME = "cuvs-bruteforce";
     private final ReadWriteLock lifecycleLock = new ReentrantReadWriteLock();
+    private final NativeHandleGuard handleGuard;
     private State state;
     private boolean closed;
 
     public CuvsVectorIndex() {
         ensureCuvsAvailable();
+        handleGuard = NativeHandleGuard.register(this, NativeBindings::destroyIndex);
     }
 
     public static boolean isCuvsAvailable() {
@@ -62,12 +65,10 @@ public final class CuvsVectorIndex implements VectorIndex {
         lifecycleLock.writeLock().lock();
         try {
             ensureOpen();
-            if (state != null) {
-                oldHandle = state.handle();
-            }
+            oldHandle = handleGuard.replace(handle);
             state = new State(handle, input.vectorCount(), input.dimensions(), input.vectorBytes());
         } catch (RuntimeException exception) {
-            NativeBindings.destroyIndex(handle);
+            destroySuppressing(handle, exception);
             throw exception;
         } finally {
             lifecycleLock.writeLock().unlock();
@@ -136,15 +137,27 @@ public final class CuvsVectorIndex implements VectorIndex {
                 return;
             }
             closed = true;
+            handle = handleGuard.take();
             if (state != null) {
-                handle = state.handle();
                 state = null;
             }
         } finally {
             lifecycleLock.writeLock().unlock();
         }
-        if (handle != 0) {
+        try {
+            if (handle != 0) {
+                NativeBindings.destroyIndex(handle);
+            }
+        } finally {
+            handleGuard.clean();
+        }
+    }
+
+    private static void destroySuppressing(long handle, RuntimeException primary) {
+        try {
             NativeBindings.destroyIndex(handle);
+        } catch (RuntimeException cleanupFailure) {
+            primary.addSuppressed(cleanupFailure);
         }
     }
 

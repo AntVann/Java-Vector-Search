@@ -10,6 +10,8 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -47,6 +49,7 @@ public final class DiskBackedIvfIndex implements VectorIndex {
     private static final String CURRENT = "CURRENT";
     private static final String READY = "READY";
     private static final String GENERATIONS = "generations";
+    private static final String WRITE_LOCK = ".vectorforge-write.lock";
 
     private final Path root;
     private final DiskIvfBuildConfig buildConfig;
@@ -83,8 +86,9 @@ public final class DiskBackedIvfIndex implements VectorIndex {
         Objects.requireNonNull(buildConfig, "buildConfig must not be null");
         Objects.requireNonNull(searchConfig, "searchConfig must not be null");
         Objects.requireNonNull(rerankerFactory, "rerankerFactory must not be null");
-        writeGeneration(root, vectors, ids, buildConfig);
-        return open(root, searchConfig, rerankerFactory);
+        Generation generation = writeGeneration(root, vectors, ids, buildConfig);
+        return new DiskBackedIvfIndex(
+                root, buildConfig, searchConfig, rerankerFactory, generation);
     }
 
     public static DiskBackedIvfIndex open(
@@ -113,9 +117,7 @@ public final class DiskBackedIvfIndex implements VectorIndex {
     public synchronized void build(float[][] vectors, long[] ids) {
         ensureOpen();
         try {
-            writeGeneration(root, vectors, ids, buildConfig);
-            Generation replacement = readGeneration(root);
-            generation = replacement;
+            generation = writeGeneration(root, vectors, ids, buildConfig);
             cache.clear();
         } catch (IOException error) {
             throw new IllegalStateException("failed to build disk IVF index", error);
@@ -348,7 +350,32 @@ public final class DiskBackedIvfIndex implements VectorIndex {
         }
     }
 
-    private static void writeGeneration(
+    private static Generation writeGeneration(
+            Path root,
+            float[][] vectors,
+            long[] ids,
+            DiskIvfBuildConfig config
+    ) throws IOException {
+        Files.createDirectories(root);
+        Path lockPath = root.resolve(WRITE_LOCK);
+        try (FileChannel lockChannel = FileChannel.open(
+                lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)) {
+            FileLock lock;
+            try {
+                lock = lockChannel.tryLock();
+            } catch (OverlappingFileLockException error) {
+                throw new IOException("another writer holds the disk IVF index lock: " + lockPath, error);
+            }
+            if (lock == null) {
+                throw new IOException("another writer holds the disk IVF index lock: " + lockPath);
+            }
+            try (lock) {
+                return writeGenerationLocked(root, vectors, ids, config);
+            }
+        }
+    }
+
+    private static Generation writeGenerationLocked(
             Path root,
             float[][] vectors,
             long[] ids,
@@ -400,6 +427,7 @@ public final class DiskBackedIvfIndex implements VectorIndex {
             Path currentTmp = root.resolve(CURRENT + "." + name + ".tmp");
             writeForced(currentTmp, (name + "\n").getBytes(StandardCharsets.US_ASCII));
             moveAtomically(currentTmp, root.resolve(CURRENT));
+            return readGeneration(root, id);
         } catch (IOException | RuntimeException error) {
             throw error;
         }
@@ -417,7 +445,11 @@ public final class DiskBackedIvfIndex implements VectorIndex {
         } catch (IllegalArgumentException error) {
             throw new DiskIvfFormatException(current, "invalid generation UUID");
         }
-        Path directory = root.resolve(GENERATIONS).resolve(name);
+        return readGeneration(root, id);
+    }
+
+    private static Generation readGeneration(Path root, UUID id) throws IOException {
+        Path directory = root.resolve(GENERATIONS).resolve(id.toString());
         if (!Files.isRegularFile(directory.resolve(READY))) {
             throw new DiskIvfFormatException(directory.resolve(READY), "generation is not ready");
         }

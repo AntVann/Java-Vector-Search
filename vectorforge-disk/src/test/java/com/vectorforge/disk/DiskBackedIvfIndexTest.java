@@ -15,6 +15,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
@@ -23,6 +25,7 @@ import java.util.zip.CRC32C;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -172,6 +175,49 @@ class DiskBackedIvfIndexTest {
         try (DiskBackedIvfIndex index = open(temporaryDirectory, 2)) {
             index.build(replacement.vectors(), replacement.ids());
             assertEquals(20, index.metrics().vectorCount());
+        }
+    }
+
+    @Test
+    void writerLockRejectsConcurrentPublicationAndAllowsRetryAfterRelease() throws Exception {
+        Files.createDirectories(temporaryDirectory);
+        Path lockPath = temporaryDirectory.resolve(".vectorforge-write.lock");
+        Dataset data = separatedDataset();
+        try (FileChannel channel = FileChannel.open(
+                lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+             FileLock ignored = channel.lock()) {
+            IOException error = assertThrows(IOException.class, () -> create(
+                    temporaryDirectory, data, 2, 2, 1_000_000, 1_000_000));
+            assertTrue(error.getMessage().contains("another writer"));
+            assertFalse(Files.exists(temporaryDirectory.resolve("CURRENT")));
+        }
+
+        try (DiskBackedIvfIndex index =
+                     create(temporaryDirectory, data, 2, 2, 1_000_000, 1_000_000)) {
+            assertEquals(data.vectors().length, index.metrics().vectorCount());
+        }
+    }
+
+    @Test
+    void eachInstanceRetainsItsPublishedGenerationWhileReopenFollowsCurrent() throws Exception {
+        Dataset first = separatedDataset();
+        Dataset second = randomDataset(31, 20, 2);
+        try (DiskBackedIvfIndex firstIndex =
+                     create(temporaryDirectory, first, 2, 2, 1_000_000, 1_000_000)) {
+            String firstGeneration = firstIndex.diskMetrics().generation();
+            try (DiskBackedIvfIndex secondIndex =
+                         create(temporaryDirectory, second, 2, 2, 1_000_000, 1_000_000)) {
+                String secondGeneration = secondIndex.diskMetrics().generation();
+                assertNotEquals(firstGeneration, secondGeneration);
+                assertEquals(first.vectors().length, firstIndex.metrics().vectorCount());
+                assertEquals(second.vectors().length, secondIndex.metrics().vectorCount());
+                assertEquals(firstGeneration, firstIndex.diskMetrics().generation());
+
+                try (DiskBackedIvfIndex reopened = open(temporaryDirectory, 2)) {
+                    assertEquals(secondGeneration, reopened.diskMetrics().generation());
+                    assertEquals(second.vectors().length, reopened.metrics().vectorCount());
+                }
+            }
         }
     }
 

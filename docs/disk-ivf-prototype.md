@@ -70,6 +70,12 @@ guarantees. Incomplete staging and unreferenced generations are ignored. Rebuild
 generation; it does not mutate the old one. This version does not delete old generations
 automatically.
 
+Creation and rebuild hold an exclusive advisory lock on `.vectorforge-write.lock` for the complete
+generation write, pointer publication, and UUID-specific validation. A competing writer fails
+explicitly instead of racing `CURRENT`. Readers do not take this lock because published
+generations are immutable. This guarantee requires every writer to honor the lock; the prototype
+makes no claim about advisory-lock reliability on network or unusual filesystems.
+
 The convenience `build(float[][], long[])` still requires build input in Java memory. A streaming
 builder is not implemented yet, so the prototype demonstrates disk-backed query residency rather
 than truly out-of-heap ingestion.

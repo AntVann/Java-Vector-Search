@@ -1,0 +1,91 @@
+name: Manual self-hosted NVIDIA verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vectorforge-self-hosted-gpu
+  cancel-in-progress: false
+
+jobs:
+  cuda:
+    name: CUDA execution
+    runs-on: [self-hosted, linux, x64, nvidia]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: GPU preflight
+        run: nvidia-smi
+      - name: Verify CUDA profile
+        run: mvn -B -ntp clean verify -Pcuda
+      - name: Require executed CUDA tests
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+          report = pathlib.Path("vectorforge-gpu/target/surefire-reports/TEST-com.vectorforge.gpu.CudaBruteForceIndexTest.xml")
+          root = ET.parse(report).getroot()
+          if int(root.attrib["tests"]) != 4 or int(root.attrib["skipped"]) != 0:
+              raise SystemExit(f"CUDA tests did not execute fully: {root.attrib}")
+          PY
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuda-surefire
+          path: "**/target/surefire-reports/*"
+          if-no-files-found: ignore
+
+  cuvs:
+    name: cuVS 26.06 execution
+    runs-on: [self-hosted, linux, x64, nvidia, cuvs-26-06]
+    timeout-minutes: 60
+    env:
+      CMAKE_GENERATOR: Ninja
+    steps:
+      - uses: actions/checkout@v4
+      - name: GPU and environment preflight
+        shell: bash
+        run: |
+          nvidia-smi
+          test -n "${CUVS_ENV_PREFIX:-}"
+          test -x "$CUVS_ENV_PREFIX/bin/java"
+          test -f "$CUVS_ENV_PREFIX/lib/libcuvs_c.so"
+      - name: Verify cuVS profile
+        shell: bash
+        run: |
+          export JAVA_HOME="$CUVS_ENV_PREFIX"
+          export PATH="$CUVS_ENV_PREFIX/bin:$PATH"
+          export CMAKE_PREFIX_PATH="$CUVS_ENV_PREFIX${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
+          export CUDAToolkit_ROOT="$CUVS_ENV_PREFIX/targets/x86_64-linux"
+          export LD_LIBRARY_PATH="$CUVS_ENV_PREFIX/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          mvn -B -ntp clean verify -Pcuvs
+      - name: Require executed CUDA and cuVS tests
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import xml.etree.ElementTree as ET
+          expected = {"CudaBruteForceIndexTest": 4, "CuvsVectorIndexTest": 5}
+          for name, count in expected.items():
+              report = pathlib.Path(f"vectorforge-gpu/target/surefire-reports/TEST-com.vectorforge.gpu.{name}.xml")
+              root = ET.parse(report).getroot()
+              if int(root.attrib["tests"]) != count or int(root.attrib["skipped"]) != 0:
+                  raise SystemExit(f"{name} did not execute fully: {root.attrib}")
+          PY
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cuvs-surefire
+          path: "**/target/surefire-reports/*"
+          if-no-files-found: ignore

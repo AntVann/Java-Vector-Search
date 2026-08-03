@@ -24,6 +24,11 @@ the published VectorForge index and ID mapping only after the build succeeds.
 Lucene internal document numbers are never used as durable identifiers because they change
 across segments and merges.
 
+If candidate reader or backend construction fails, the prior published snapshot remains active.
+If releasing a retired reader or backend fails after publication, `refreshAndRebuild()` throws
+`LuceneRefreshCleanupException`. That exception explicitly means the new snapshot is active and
+reports its live-document count; it is a cleanup diagnostic, not a rollback signal.
+
 ## Search and filtering
 
 VectorForge search returns stable `long` IDs. The adapter resolves each ID through the snapshot

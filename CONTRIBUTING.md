@@ -38,6 +38,11 @@ The default command must pass without CMake, CUDA, cuVS, or GPU hardware.
 Profile-enabled GPU tests must report executed test counts; an all-skipped run
 does not validate that profile.
 
+GitHub-hosted CI covers Windows and Linux default/native builds. Actual GPU
+execution is manual-only and requires a maintained self-hosted runner with the
+`nvidia` label. The cuVS job additionally requires the `cuvs-26-06` label and a
+runner-defined `CUVS_ENV_PREFIX`; it does not install or bundle cuVS libraries.
+
 For benchmark changes, package the benchmark module, run the validation script,
 retain machine-readable output, and regenerate Markdown summaries from that
 output. Record the exact commit, dirty state, seed, JVM, OS, compiler, CUDA/cuVS,
@@ -50,3 +55,21 @@ and hardware information.
 - Optional backends fail clearly and do not silently fall back.
 - Tests cover the change on CPU and each available optional backend.
 - Documentation labels experimental and unavailable capabilities accurately.
+
+## Native diagnostics
+
+After building an optional native profile:
+
+```powershell
+$env:JAVA_TOOL_OPTIONS="-Dvectorforge.native.library.dir=vectorforge-native/target/native-lib"
+java -cp vectorforge-native/target/classes com.vectorforge.nativeindex.NativeEnvironmentReport
+```
+
+```bash
+JAVA_TOOL_OPTIONS=-Dvectorforge.native.library.dir=vectorforge-native/target/native-lib \
+  java -cp vectorforge-native/target/classes \
+  com.vectorforge.nativeindex.NativeEnvironmentReport
+```
+
+The report identifies JNI loading, compiled GPU features, CUDA device count,
+and cuVS version, or prints attempted locations and loader-path remediation.

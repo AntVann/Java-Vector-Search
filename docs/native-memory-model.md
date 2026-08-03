@@ -25,9 +25,10 @@ The repository includes JNI-backed CPU-native, custom CUDA, and cuVS brute-force
 - Java direct buffers are reclaimed by the JVM
 - Native handles are released through explicit destroy functions invoked from `AutoCloseable.close()`
 - Cleanup must be idempotent so duplicate close calls do not double-free native resources
-- Callers must use try-with-resources. The current wrappers do not provide a
-  `Cleaner` fallback, so abandoning an unclosed native wrapper can retain its
-  handle and associated CPU or GPU memory until process exit.
+- Callers must use try-with-resources for deterministic cleanup. A shared
+  `Cleaner` guard releases an abandoned wrapper's current handle as a
+  last-resort fallback, but garbage collection is neither prompt nor guaranteed
+  before process exit and cleaner teardown failures cannot be reported.
 
 ## Handle Lifetime
 
@@ -60,6 +61,10 @@ RAII destroys brute-force indexes before their shared resource. cuVS cleanup fai
 Runtime dependencies of the cuVS-enabled shared library are not bundled. The
 cuVS, RAPIDS, and CUDA libraries must be discoverable via the platform dynamic
 loader path.
+
+`NativeEnvironmentReport` prints the selected JNI configuration, compiled
+CUDA/cuVS features, device count, and cuVS version. Loader failures preserve
+each attempted load error and include `PATH`/`LD_LIBRARY_PATH` remediation.
 
 ## Exceptions
 

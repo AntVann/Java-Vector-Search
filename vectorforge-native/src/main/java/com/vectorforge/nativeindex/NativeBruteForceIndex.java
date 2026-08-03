@@ -27,12 +27,14 @@ public final class NativeBruteForceIndex implements VectorIndex {
     private static final String BACKEND_NAME = "native-bruteforce";
 
     private final ReadWriteLock lifecycleLock = new ReentrantReadWriteLock();
+    private final NativeHandleGuard handleGuard;
 
     private NativeIndexState state;
     private boolean closed;
 
     public NativeBruteForceIndex() {
         NativeLibraryLoader.load();
+        handleGuard = NativeHandleGuard.register(this, NativeBindings::destroyIndex);
     }
 
     @Override
@@ -44,13 +46,10 @@ public final class NativeBruteForceIndex implements VectorIndex {
         lifecycleLock.writeLock().lock();
         try {
             ensureOpenLocked();
-            NativeIndexState previous = state;
+            priorHandle = handleGuard.replace(handle);
             state = new NativeIndexState(handle, input.vectorCount(), input.dimensions(), input.vectorBytes());
-            if (previous != null) {
-                priorHandle = previous.handle();
-            }
         } catch (RuntimeException ex) {
-            NativeBindings.destroyIndex(handle);
+            destroySuppressing(handle, ex);
             throw ex;
         } finally {
             lifecycleLock.writeLock().unlock();
@@ -160,16 +159,28 @@ public final class NativeBruteForceIndex implements VectorIndex {
                 return;
             }
             closed = true;
+            handleToDestroy = handleGuard.take();
             if (state != null) {
-                handleToDestroy = state.handle();
                 state = null;
             }
         } finally {
             lifecycleLock.writeLock().unlock();
         }
 
-        if (handleToDestroy != 0L) {
-            NativeBindings.destroyIndex(handleToDestroy);
+        try {
+            if (handleToDestroy != 0L) {
+                NativeBindings.destroyIndex(handleToDestroy);
+            }
+        } finally {
+            handleGuard.clean();
+        }
+    }
+
+    private static void destroySuppressing(long handle, RuntimeException primary) {
+        try {
+            NativeBindings.destroyIndex(handle);
+        } catch (RuntimeException cleanupFailure) {
+            primary.addSuppressed(cleanupFailure);
         }
     }
 

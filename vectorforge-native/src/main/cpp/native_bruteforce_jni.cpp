@@ -100,10 +100,17 @@ void destroy_index(jlong handle) {
     if (handle <= 0L) {
         throw InvalidHandleException("native handle must be positive");
     }
-    std::lock_guard<std::mutex> lock(g_index_mutex);
-    if (g_indices.erase(handle) == 0U) {
-        throw InvalidHandleException("invalid or already closed native handle: " + std::to_string(handle));
+    std::shared_ptr<NativeIndex> removed;
+    {
+        std::lock_guard<std::mutex> lock(g_index_mutex);
+        auto iterator = g_indices.find(handle);
+        if (iterator == g_indices.end()) {
+            throw InvalidHandleException("invalid or already closed native handle: " + std::to_string(handle));
+        }
+        removed = std::move(iterator->second);
+        g_indices.erase(iterator);
     }
+    removed.reset();
 }
 
 std::vector<float> copy_float_buffer(float* values, std::size_t element_count) {

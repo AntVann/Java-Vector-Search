@@ -16,8 +16,8 @@ commands.
 ## Native and GPU
 
 - Native, CUDA, and cuVS resources require deterministic `close()` via
-  try-with-resources. There is currently no `Cleaner` fallback for abandoned
-  wrappers.
+  try-with-resources. A `Cleaner` fallback exists for abandoned wrappers, but
+  its execution is nondeterministic and its teardown failures are suppressed.
 - The custom CUDA backend is exact dot product and performs host-side top-k. It
   is educational, not a tuned ANN implementation.
 - cuVS is verified only against version 26.06 on Linux/WSL2. Runtime cuVS,
@@ -42,12 +42,16 @@ commands.
   claims.
 - Smoke harnesses do not provide JMH isolation, confidence intervals, randomized
   backend order, or control of thermal/power state.
+- Serious comparisons still need isolated JVMs and rotated execution order;
+  that benchmark orchestration remains future work.
 - The resident-backend end-to-end suite and disk-IVF harness are separate.
 - Native and GPU memory measurements are best-effort and platform dependent.
 
 ## Operational Gaps
 
 - There is no compatibility guarantee before a stable release.
-- There is no CI runner with NVIDIA hardware in this repository.
+- GitHub-hosted CI covers default/native builds. The manual GPU workflow depends
+  on an externally maintained self-hosted NVIDIA runner; the repository does
+  not provide hardware, drivers, or cuVS runtime libraries.
 - Libraries intentionally do not install a logging framework; demos and
   benchmark CLIs write structured or human-readable output to standard streams.

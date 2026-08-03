@@ -129,6 +129,9 @@ public final class LuceneVectorAdapter implements AutoCloseable {
     /**
      * Opens a new near-real-time Lucene reader and rebuilds VectorForge from Lucene's live
      * documents. Deletes and updates are therefore applied atomically at this boundary.
+     * Candidate preparation failures leave the prior snapshot active. A
+     * {@link LuceneRefreshCleanupException} means the replacement snapshot is active and only
+     * cleanup of retired resources failed.
      */
     public synchronized int refreshAndRebuild() throws IOException {
         ensureOpen();
@@ -211,7 +214,7 @@ public final class LuceneVectorAdapter implements AutoCloseable {
             }
         }
         if (cleanupFailure != null) {
-            throw cleanupFailure;
+            throw new LuceneRefreshCleanupException(snapshot.size(), cleanupFailure);
         }
         return snapshot.size();
     }
