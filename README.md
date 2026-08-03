@@ -244,6 +244,39 @@ CPU ground truth. See the checked-in
 [benchmark methodology](docs/benchmark-methodology.md) for raw samples,
 environment details, and limitations.
 
+### Batch and dataset scaling
+
+A second run on the same WSL2 Intel machine varied dataset size and batch size
+while keeping 128 dimensions, `k=10`, dot product, and seed `20260728` fixed.
+It used 5 warm-up iterations and 20 measured iterations per scenario. The table
+reports end-to-end queries per second; higher is better.
+
+| Vectors | Batch | Java CPU | Native C++ CPU | Custom CUDA | cuVS |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 10,000 | 1 | 858.0 | 1,220.8 | 5,861.6 | 2,471.4 |
+| 10,000 | 8 | 1,234.5 | 1,292.0 | 16,024.7 | 24,014.4 |
+| 10,000 | 32 | 1,235.1 | 1,351.5 | 19,357.2 | 62,383.2 |
+| 10,000 | 128 | 1,237.2 | 1,304.0 | 21,934.4 | 106,604.7 |
+| 100,000 | 1 | 115.8 | 114.1 | 1,652.8 | 2,409.1 |
+| 100,000 | 8 | 118.8 | 124.2 | 2,256.7 | 8,120.4 |
+| 100,000 | 32 | 117.5 | 128.1 | 2,469.7 | 23,219.0 |
+| 100,000 | 128 | 117.5 | 126.5 | 2,553.7 | 42,942.8 |
+
+cuVS did not lead the original 10,000-vector, batch-one comparison, but it
+overtook custom CUDA at batches 8, 32, and 128. With 100,000 vectors, cuVS led
+at every tested batch size. This shows why a single small query is insufficient
+for ranking GPU backends: cuVS benefits much more strongly from batching, while
+the current custom CUDA path scales less efficiently across a query batch.
+
+All 32 backend/scenario combinations completed without skips or errors and
+matched the exact Java baseline at Recall@10 = 1.0. These remain single-run
+local observations. Scenarios executed sequentially in one JVM, backend order
+was fixed, and batch latency is not per-query latency. The complete
+[scaling JSON Lines artifact](benchmark-results/wsl2-intel-scaling.jsonl) and
+[generated scaling summary](benchmark-results/wsl2-intel-scaling.md) retain
+the latency percentiles, build times, memory observations, CUDA phase timings,
+and raw samples.
+
 ## Current Limitations
 
 - The shared API supports scalar and batch search, but optimized batching remains backend-specific
