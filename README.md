@@ -330,28 +330,6 @@ Observed CUDA phase timings for that run:
 - Treat disk locking as advisory. Distributed coordination, replication,
   compaction, and database-grade crash consistency are not implemented.
 
-## Interview Highlights
-
-- **Most technically impressive implemented feature:** one Java API spanning
-  pure Java, JNI/C++, custom CUDA, and the verified cuVS 26.06 C API while the
-  default build remains CPU-only.
-- **Strongest benchmark finding:** in the retained three-iteration WSL2 smoke
-  artifact for `10,000 x 128`, batch 1, `k=10`, dot product, measured batch
-  averages were `1.669 ms` for Java CPU, `0.146 ms` for custom CUDA, and
-  `0.445 ms` for cuVS, each with Recall@10 of `1.0` against CPU ground truth.
-  The sample is too small for a generalized performance conclusion.
-- **Most important resource-lifecycle failure mode addressed:** forgotten
-  `close()` calls could retain native/GPU handles. The fix combined an
-  exactly-once guard, explicit-close error semantics, native shared ownership,
-  teardown outside the global mutex, and a nondeterministic Cleaner fallback.
-- **Clearest design tradeoff:** the custom CUDA backend copies the complete
-  score matrix back for host-side exact top-k. That keeps correctness simple and
-  testable but increases transfer volume and limits performance.
-- **Claims to avoid:** production readiness; database-grade durability;
-  distributed scalability; a production ANN implementation; universal GPU or
-  cuVS superiority; Windows-native cuVS support; or scale beyond the documented
-  datasets and hardware.
-
 ## Project Status
 
 This repository is interview-ready research software, not a production service.
